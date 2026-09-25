@@ -2,7 +2,7 @@ name: Prepare release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     if: github.ref_type == 'tag'
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -23,18 +23,15 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Check the release tag
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]
-          git show-ref --verify "refs/tags/$RELEASE_TAG"
-          git merge-base --is-ancestor HEAD origin/main
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           cache: false
+      - name: Check the release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: go run scripts/package.go -check-release -version "$RELEASE_TAG"
       - name: Verify source and build release archives
         shell: bash
         env:
@@ -56,9 +53,75 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 7
-  draft:
+  native:
     needs: build
-    runs-on: self-hosted
+    runs-on:
+      [self-hosted, "${{ matrix.runner_os }}", "${{ matrix.runner_arch }}"]
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner_os: Linux
+            runner_arch: X64
+            os: linux
+            arch: amd64
+            ext: tar.gz
+          - runner_os: Linux
+            runner_arch: ARM64
+            os: linux
+            arch: arm64
+            ext: tar.gz
+          - runner_os: macOS
+            runner_arch: X64
+            os: darwin
+            arch: amd64
+            ext: tar.gz
+          - runner_os: macOS
+            runner_arch: ARM64
+            os: darwin
+            arch: arm64
+            ext: tar.gz
+          - runner_os: Windows
+            runner_arch: X64
+            os: windows
+            arch: amd64
+            ext: zip
+          - runner_os: Windows
+            runner_arch: ARM64
+            os: windows
+            arch: arm64
+            ext: zip
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-archives
+          path: release-archives
+      - name: Test native credentials and the release package
+        shell: bash
+        env:
+          DEPLEXO_TEST_NATIVE_KEYRING: "1"
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET_OS: ${{ matrix.os }}
+          TARGET_ARCH: ${{ matrix.arch }}
+          ARCHIVE_EXT: ${{ matrix.ext }}
+        run: |
+          bash scripts/test.sh
+          go test ./internal/credentials -run '^TestNativeKeyring$' -count=1 -v
+          go test ./scripts -count=1 -v
+          source_commit=$(git rev-parse HEAD)
+          go run scripts/package.go -verify "release-archives/deplexo_${RELEASE_TAG}_${TARGET_OS}_${TARGET_ARCH}.${ARCHIVE_EXT}" -version "$RELEASE_TAG" -commit "$source_commit"
+  draft:
+    needs: [build, native]
+    runs-on: [self-hosted, Linux]
     environment: release
     timeout-minutes: 10
     permissions:
@@ -79,7 +142,7 @@ jobs:
       - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: ${{ steps.directory.outputs.path }}/deplexo_*
-      - name: Create draft release
+      - name: Attach verified packages to the draft release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,4 +152,8 @@ jobs:
         run: |
           cd "$ARTIFACT_DIR"
           sha256sum -c SHA256SUMS
-          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes ./*.tar.gz ./*.zip SHA256SUMS
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --prerelease
+          fi
+          gh release upload "$RELEASE_TAG" ./*.tar.gz ./*.zip SHA256SUMS --clobber

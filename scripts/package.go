@@ -22,6 +22,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	buildversion "github.com/Deplexo/cli/internal/version"
 )
 
 func main() {
@@ -37,12 +39,27 @@ func run() error {
 	version := flag.String("version", "dev", "CLI version")
 	commit := flag.String("commit", "unknown", "Source commit")
 	out := flag.String("out", "dist", "Output directory")
+	checkRelease := flag.Bool("check-release", false, "Check the tag, release manifest and source commit without building")
+	verifyPath := flag.String("verify", "", "Verify an existing native archive without rebuilding")
 	flag.Parse()
+	if *checkRelease {
+		return checkReleaseTag(*version)
+	}
 	if !regexp.MustCompile(`^(linux|darwin|windows)$`).MatchString(*targetOS) || !regexp.MustCompile(`^(amd64|arm64)$`).MatchString(*arch) {
 		return errors.New("supported targets are linux, darwin, or windows with amd64 or arm64")
 	}
-	if !regexp.MustCompile(`^(dev|v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?)$`).MatchString(*version) || !regexp.MustCompile(`^(unknown|[0-9a-f]{7,40})$`).MatchString(*commit) {
+	if (*version != "dev" && !buildversion.ValidTag(*version)) || !regexp.MustCompile(`^(unknown|[0-9a-f]{7,40})$`).MatchString(*commit) {
 		return errors.New("invalid version or commit")
+	}
+	if *version != "dev" && !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(*commit) {
+		return errors.New("release archives require the full source commit")
+	}
+	if *verifyPath != "" {
+		binary := "deplexo"
+		if runtime.GOOS == "windows" {
+			binary += ".exe"
+		}
+		return verify(*verifyPath, binary, *version, *commit)
 	}
 	if err := os.MkdirAll(*out, 0755); err != nil {
 		return err
@@ -98,7 +115,7 @@ func run() error {
 		return err
 	}
 	if *targetOS == runtime.GOOS && *arch == runtime.GOARCH {
-		if err := verify(archivePath, binary, *version); err != nil {
+		if err := verify(archivePath, binary, *version, *commit); err != nil {
 			return err
 		}
 	}
@@ -202,7 +219,7 @@ func archive(path string, files map[string]string, binary string) (result error)
 	return errors.Join(writer.Close(), gz.Close())
 }
 
-func verify(path, binary, version string) error {
+func verify(path, binary, version, commit string) error {
 	directory, err := os.MkdirTemp("", "deplexo-package-check-")
 	if err != nil {
 		return err
@@ -277,12 +294,47 @@ func verify(path, binary, version string) error {
 	}
 	var result struct {
 		Version string `json:"version"`
+		Commit  string `json:"commit"`
+		OS      string `json:"os"`
+		Arch    string `json:"arch"`
 	}
-	if json.Unmarshal(data, &result) != nil || result.Version != version {
-		return errors.New("packaged executable reports a different version")
+	if json.Unmarshal(data, &result) != nil || result.Version != version || result.Commit != commit || result.OS != runtime.GOOS || result.Arch != runtime.GOARCH {
+		return errors.New("packaged executable reports a different build identity")
 	}
 	if err := exec.Command(destination, "--help").Run(); err != nil {
 		return fmt.Errorf("packaged help failed: %w", err)
 	}
+	return nil
+}
+
+func checkReleaseTag(tag string) error {
+	if !buildversion.ValidTag(tag) {
+		return fmt.Errorf("provide a release tag such as v0.1.0 or v0.1.0-rc.1")
+	}
+	data, err := os.ReadFile(".release-please-manifest.json")
+	if err != nil {
+		return err
+	}
+	var manifest map[string]string
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return err
+	}
+	if "v"+manifest["."] != tag {
+		return fmt.Errorf("release tag does not match the version in the release manifest")
+	}
+	for _, args := range [][]string{{"diff", "--quiet"}, {"diff", "--cached", "--quiet"}, {"merge-base", "--is-ancestor", "HEAD", "origin/main"}} {
+		if err := exec.Command("git", args...).Run(); err != nil {
+			return fmt.Errorf("release requires a clean tracked tree at a commit on origin/main")
+		}
+	}
+	head, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	if err != nil {
+		return err
+	}
+	ref, err := exec.Command("git", "rev-parse", "--verify", "refs/tags/"+tag+"^{commit}").Output()
+	if err != nil || strings.TrimSpace(string(head)) != strings.TrimSpace(string(ref)) {
+		return fmt.Errorf("release tag must point to the checked-out commit")
+	}
+	fmt.Println(tag)
 	return nil
 }

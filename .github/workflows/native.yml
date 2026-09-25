@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   native:
-    runs-on: [self-hosted, '${{ inputs.os }}', '${{ inputs.arch }}']
+    runs-on: [self-hosted, "${{ inputs.os }}", "${{ inputs.arch }}"]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -35,8 +35,11 @@ jobs:
       - name: Save, read, and remove a test keyring entry
         shell: bash
         env:
-          DEPLEXO_TEST_NATIVE_KEYRING: '1'
+          DEPLEXO_TEST_NATIVE_KEYRING: "1"
         run: go test ./internal/credentials -run '^TestNativeKeyring$' -count=1 -v
+      - name: Test native installer behavior
+        shell: bash
+        run: go test ./scripts -count=1 -v
       - name: Build and execute the packaged binary
         shell: bash
         env:
