@@ -1,0 +1,7 @@
+/bin/
+/dist/
+/coverage/
+/coverage.out
+.env
+.env.*
+!.env.example

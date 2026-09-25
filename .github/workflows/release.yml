@@ -1,0 +1,92 @@
+name: Prepare release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref_type == 'tag'
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate the release ref
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]
+          git show-ref --verify "refs/tags/$RELEASE_TAG"
+          git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify source and build release archives
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          bash scripts/test.sh
+          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --timeout 5m
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+          source_commit=$(git rev-parse HEAD)
+          for target_os in linux darwin windows; do
+            for target_arch in amd64 arm64; do
+              go run scripts/package.go -os "$target_os" -arch "$target_arch" -version "$RELEASE_TAG" -commit "$source_commit"
+            done
+          done
+          cat dist/*.sha256 > dist/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-archives
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+  draft:
+    needs: build
+    runs-on: self-hosted
+    environment: release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Create a fresh artifact directory
+        id: directory
+        shell: bash
+        run: |
+          artifact_dir=$(mktemp -d "$RUNNER_TEMP/deplexo-release.XXXXXXXX")
+          echo "path=$artifact_dir" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-archives
+          path: ${{ steps.directory.outputs.path }}
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.directory.outputs.path }}/deplexo_*
+      - name: Create draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          ARTIFACT_DIR: ${{ steps.directory.outputs.path }}
+        run: |
+          cd "$ARTIFACT_DIR"
+          sha256sum -c SHA256SUMS
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes ./*.tar.gz ./*.zip SHA256SUMS
