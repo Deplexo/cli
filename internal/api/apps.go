@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -144,6 +145,13 @@ type Deployment struct {
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
+func (d *Deployment) redact(token string) {
+	if token != "" {
+		d.BuildLogs = strings.ReplaceAll(d.BuildLogs, token, "[REDACTED]")
+		d.ErrorMessage = strings.ReplaceAll(d.ErrorMessage, token, "[REDACTED]")
+	}
+}
+
 type Pagination struct {
 	Total   int  `json:"total"`
 	Limit   int  `json:"limit"`
@@ -164,6 +172,9 @@ func (c *Client) Deployments(ctx context.Context, token, id string, limit, offse
 	if result.Data == nil {
 		result.Data = []Deployment{}
 	}
+	for i := range result.Data {
+		result.Data[i].redact(token)
+	}
 	return result, err
 }
 
@@ -173,6 +184,7 @@ func (c *Client) DeploymentLogs(ctx context.Context, token, id string) (Deployme
 		return result, errors.New("deployment ID must be a UUID")
 	}
 	err := c.get(ctx, "/deployments/"+id+"/logs", token, &result)
+	result.redact(token)
 	if err == nil && result.ID != id {
 		err = errors.New("API returned a different deployment than requested")
 	}
@@ -203,6 +215,11 @@ func (c *Client) RuntimeLogs(ctx context.Context, token, id, since string, limit
 	err := c.get(ctx, "/apps/"+id+"/logs/runtime?"+query.Encode(), token, &result)
 	if result.Lines == nil {
 		result.Lines = []LogLine{}
+	}
+	if token != "" {
+		for i := range result.Lines {
+			result.Lines[i].Message = strings.ReplaceAll(result.Lines[i].Message, token, "[REDACTED]")
+		}
 	}
 	return result, err
 }

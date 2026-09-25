@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/Deplexo/cli/internal/api"
 )
@@ -22,11 +23,30 @@ type Project struct {
 }
 
 func read(path string, result any) error {
-	f, err := os.Open(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	name := filepath.Base(path)
+	before, err := root.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if !before.Mode().IsRegular() {
+		return errors.New("configuration must be a regular file, not a link or device")
+	}
+	// Nonblocking open prevents a concurrent FIFO replacement from hanging.
+	// Root confinement also prevents replacement links escaping the directory.
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
+	after, err := f.Stat()
+	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return errors.New("configuration changed while opening it; try again")
+	}
 	data, err := io.ReadAll(io.LimitReader(f, 16385))
 	if err != nil || len(data) > 16384 {
 		return errors.New("configuration file exceeds the size limit or could not be read")

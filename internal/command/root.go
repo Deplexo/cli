@@ -20,6 +20,7 @@ import (
 	"github.com/Deplexo/cli/internal/credentials"
 	"github.com/Deplexo/cli/internal/output"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 type Options struct {
@@ -31,6 +32,7 @@ type Options struct {
 	WorkingDir      func() (string, error)
 	Transport       http.RoundTripper
 	OpenBrowser     func(context.Context, string) error
+	IsTerminal      func() bool
 }
 
 type application struct {
@@ -75,6 +77,12 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	if options.OpenBrowser == nil {
 		options.OpenBrowser = openBrowser
 	}
+	if options.IsTerminal == nil {
+		options.IsTerminal = func() bool {
+			file, ok := options.In.(*os.File)
+			return ok && term.IsTerminal(int(file.Fd()))
+		}
+	}
 	if options.Version == "" {
 		options.Version = "dev"
 	}
@@ -95,7 +103,7 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	root.PersistentFlags().StringVar(&a.origin, "origin", "", "HTTPS API origin (DEPLEXO_ORIGIN)")
 	root.PersistentFlags().StringVar(&a.profile, "profile", "", "Sign-in profile (DEPLEXO_PROFILE)")
 	root.PersistentFlags().BoolVar(&a.insecure, "insecure-storage", false, "Use a plaintext credential file instead of the OS keyring")
-	root.PersistentFlags().BoolVar(&a.noInput, "no-input", false, "Disable prompts and automatic browser opening")
+	root.PersistentFlags().BoolVar(&a.noInput, "no-input", false, "Disable prompts and browser opening")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "Write JSON; use one object per line with logs --follow")
 	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand())
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the CLI version", Args: noArgs,

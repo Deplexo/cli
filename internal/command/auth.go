@@ -1,7 +1,12 @@
 package command
 
 import (
+	"bufio"
+	"context"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/Deplexo/cli/internal/api"
 	"github.com/Deplexo/cli/internal/auth"
@@ -26,17 +31,8 @@ func (a *application) authCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			profile, err := manager.Login(cmd.Context(), scopes, func(device api.Device) error {
-				if _, err := fmt.Fprintf(a.options.Err, "Open %s and enter %s.\n", output.Safe(device.VerificationURI), output.Safe(device.UserCode)); err != nil {
-					return err
-				}
-				if !noBrowser && !a.noInput {
-					if err := a.options.OpenBrowser(cmd.Context(), device.VerificationURI); err != nil {
-						_, _ = fmt.Fprintln(a.options.Err, "Could not open a browser. Open the URL above to continue.")
-					}
-				}
-				_, err := fmt.Fprintln(a.options.Err, "Waiting for approval...")
-				return err
+			profile, err := manager.Login(cmd.Context(), scopes, func(ctx context.Context, device api.Device) error {
+				return a.pair(ctx, device, noBrowser)
 			})
 			if err != nil {
 				return err
@@ -63,6 +59,72 @@ func (a *application) authCommand() *cobra.Command {
 			}{true}, "Signed out.")
 		}})
 	return group
+}
+
+func (a *application) pair(ctx context.Context, device api.Device, noBrowser bool) error {
+	if _, err := fmt.Fprintf(a.options.Err, "Open %s and enter %s.\n", output.Safe(device.VerificationURI), output.Safe(device.UserCode)); err != nil {
+		return err
+	}
+	if !noBrowser && !a.noInput && a.options.IsTerminal() {
+		if _, err := fmt.Fprint(a.options.Err, "Please press Enter to open your browser, or type n and press Enter to open the link yourself: "); err != nil {
+			return err
+		}
+		open, err := confirmBrowser(ctx, a.options.In)
+		if err != nil {
+			return err
+		}
+		if open {
+			if err := a.options.OpenBrowser(ctx, device.VerificationURI); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if _, err := fmt.Fprintln(a.options.Err, "Could not open a browser. Open the URL above to continue."); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	_, err := fmt.Fprintln(a.options.Err, "Waiting for approval...")
+	return err
+}
+
+func confirmBrowser(ctx context.Context, input io.Reader) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	type response struct {
+		line string
+		err  error
+	}
+	answer := make(chan response, 1)
+	// A terminal read cannot be cancelled portably without closing the caller's
+	// stdin. The process exits on cancellation; the buffered send cannot block.
+	go func() {
+		line, err := bufio.NewReader(io.LimitReader(input, 1024)).ReadString('\n')
+		answer <- response{line, err}
+	}()
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case result := <-answer:
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		if errors.Is(result.err, io.EOF) {
+			return false, nil
+		}
+		if result.err != nil {
+			return false, errors.New("could not read your answer; use --no-browser to sign in manually")
+		}
+		line := strings.TrimSuffix(strings.TrimSuffix(result.line, "\n"), "\r")
+		if line == "" {
+			return true, nil
+		}
+		if strings.EqualFold(line, "n") {
+			return false, nil
+		}
+		return false, output.Usage("press Enter to open the browser, or use --no-browser to sign in manually")
+	}
 }
 
 func (a *application) whoamiCommand() *cobra.Command {

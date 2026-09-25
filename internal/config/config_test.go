@@ -1,9 +1,13 @@
 package config
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestProjectContractAndNoOverwrite(t *testing.T) {
@@ -29,5 +33,38 @@ func TestProjectContractAndNoOverwrite(t *testing.T) {
 		if _, err := LoadProject(dir); err == nil {
 			t.Errorf("accepted %s", data)
 		}
+	}
+}
+
+func TestRejectNonregularConfig(t *testing.T) {
+	if path := os.Getenv("DEPLEXO_CONFIG_FIFO_TEST"); path != "" {
+		if _, err := LoadProject(path); err == nil {
+			t.Fatal("accepted FIFO configuration")
+		}
+		return
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".deplexo.json")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadProject(dir); err == nil {
+		t.Fatal("accepted directory configuration")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if err := exec.Command("mkfifo", path).Run(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRejectNonregularConfig$")
+	cmd.Env = append(os.Environ(), "DEPLEXO_CONFIG_FIFO_TEST="+dir)
+	if data, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("FIFO read blocked or failed: %v %s", err, data)
 	}
 }

@@ -66,7 +66,6 @@ func (a *application) deploymentsCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		result.BuildLogs = strings.ReplaceAll(result.BuildLogs, token, "[REDACTED]")
 		if a.json {
 			return output.JSON(a.options.Out, result)
 		}
@@ -113,9 +112,6 @@ func (a *application) logsCommand() *cobra.Command {
 					continue
 				}
 				return err
-			}
-			for i := range result.Lines {
-				result.Lines[i].Message = strings.ReplaceAll(result.Lines[i].Message, token, "[REDACTED]")
 			}
 			if !follow && a.json {
 				return output.JSON(a.options.Out, result)

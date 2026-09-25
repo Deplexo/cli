@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -302,7 +303,7 @@ func TestLoginPersistenceFailureRevokesGrant(t *testing.T) {
 			revoked = true
 		}
 	})
-	_, err := m.Login(context.Background(), []string{"profile:read"}, func(api.Device) error { pairing = true; return nil })
+	_, err := m.Login(context.Background(), []string{"profile:read"}, func(context.Context, api.Device) error { pairing = true; return nil })
 	if err == nil || !revoked || !store.missing {
 		t.Fatalf("persistence handling: %v revoked=%v missing=%v", err, revoked, store.missing)
 	}
@@ -371,6 +372,31 @@ func TestLogoutClearsAfterRemoteFailureAndMalformedState(t *testing.T) {
 	}
 }
 
+func TestCancelledLogoutClearsLocalStateAndPreservesWarning(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := &memoryStore{}
+	m := managerFor(t, store, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/revoke" {
+			_, _ = io.Copy(io.Discard, r.Body)
+			cancel()
+			<-r.Context().Done()
+		}
+	})
+	store.s = validSession(m.API.Origin())
+	err := m.Logout(ctx)
+	if !store.deleted || !errors.Is(err, context.Canceled) || output.ExitCode(err) != 130 {
+		t.Fatalf("cancelled logout: %v deleted=%v", err, store.deleted)
+	}
+	for _, jsonOutput := range []bool{false, true} {
+		var out bytes.Buffer
+		output.Report(&out, err, jsonOutput)
+		if !strings.Contains(out.String(), "local sign-in removed") || !strings.Contains(out.String(), "server session may remain") {
+			t.Fatalf("lost sign-out warning: %s", out.String())
+		}
+	}
+}
+
 func TestScopeAndOriginBinding(t *testing.T) {
 	if _, err := Scopes("app:read", false); output.ExitCode(err) != 2 {
 		t.Fatal("profile scope not required")
@@ -420,7 +446,7 @@ func TestLoginDoesNotRevokeCrossOriginPreviousSession(t *testing.T) {
 		}
 	})
 	store.s = validSession("https://another.example")
-	_, err := m.Login(context.Background(), []string{"profile:read"}, func(api.Device) error { return nil })
+	_, err := m.Login(context.Background(), []string{"profile:read"}, func(context.Context, api.Device) error { return nil })
 	if err == nil || revocations.Load() != 0 || store.s.Origin != m.API.Origin() {
 		t.Fatalf("cross-origin replacement: %v revocations=%d", err, revocations.Load())
 	}

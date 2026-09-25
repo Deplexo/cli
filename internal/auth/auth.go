@@ -173,7 +173,7 @@ func (m *Manager) accept(ctx context.Context, v credentials.Vault, d api.Discove
 }
 
 // Login keeps the refresh/logout lock until approval and credential storage finish.
-func (m *Manager) Login(ctx context.Context, scopes []string, pairing func(api.Device) error) (api.Profile, error) {
+func (m *Manager) Login(ctx context.Context, scopes []string, pairing func(context.Context, api.Device) error) (api.Profile, error) {
 	if m.TokenEnvSet {
 		return api.Profile{}, output.Usage("unset DEPLEXO_TOKEN before signing in")
 	}
@@ -200,7 +200,7 @@ func (m *Manager) Login(ctx context.Context, scopes []string, pairing func(api.D
 		}
 		pollCtx, pollCancel := context.WithTimeout(ctx, time.Duration(device.ExpiresIn)*time.Second)
 		defer pollCancel()
-		if err := pairing(device); err != nil {
+		if err := pairing(pollCtx, device); err != nil {
 			return err
 		}
 		t, err := m.poll(pollCtx, d, device)
@@ -298,7 +298,11 @@ func (m *Manager) Logout(ctx context.Context) error {
 			return err
 		}
 		if remoteErr != nil {
-			return errors.New("local sign-in removed, but the server session may remain; remove the CLI device in account settings")
+			message := "local sign-in removed, but the server session may remain; remove the CLI device in account settings"
+			if errors.Is(remoteErr, context.Canceled) {
+				return output.Interrupted("interrupted; " + message)
+			}
+			return errors.New(message)
 		}
 		return nil
 	})

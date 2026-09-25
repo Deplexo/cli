@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Deplexo/cli/internal/api"
 )
@@ -25,6 +26,111 @@ func TestOfflineCommands(t *testing.T) {
 				t.Fatalf("code=%d output=%q stderr=%q", code, out.String(), stderr.String())
 			}
 		})
+	}
+}
+
+func TestPairRequiresEnterBeforeOpeningBrowser(t *testing.T) {
+	for _, tc := range []struct {
+		name, input                            string
+		terminal, noInput, noBrowser, wantOpen bool
+	}{
+		{"enter", "\n", true, false, false, true},
+		{"windows-enter", "\r\n", true, false, false, true},
+		{"manual", "n\n", true, false, false, false},
+		{"eof", "", true, false, false, false},
+		{"redirected", "\n", false, false, false, false},
+		{"no-input", "\n", true, true, false, false},
+		{"no-browser", "\n", true, false, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			opened := false
+			a := &application{noInput: tc.noInput, options: Options{
+				In: strings.NewReader(tc.input), Err: &out, IsTerminal: func() bool { return tc.terminal },
+				OpenBrowser: func(_ context.Context, url string) error {
+					if !strings.Contains(out.String(), "https://deplexo.com/new-devices") || !strings.Contains(out.String(), "ABCD-EFGH") || !strings.Contains(out.String(), "Please press Enter") {
+						t.Fatal("browser opened before pairing instructions and prompt")
+					}
+					if url != "https://deplexo.com/new-devices" {
+						t.Fatal("browser URL changed")
+					}
+					opened = true
+					return nil
+				},
+			}}
+			if err := a.pair(context.Background(), api.Device{VerificationURI: "https://deplexo.com/new-devices", UserCode: "ABCD-EFGH"}, tc.noBrowser); err != nil {
+				t.Fatal(err)
+			}
+			if opened != tc.wantOpen {
+				t.Fatalf("opened=%v", opened)
+			}
+			if (!tc.terminal || tc.noInput || tc.noBrowser) && strings.Contains(out.String(), "Please press Enter") {
+				t.Fatal("prompted in manual mode")
+			}
+		})
+	}
+}
+
+func TestBrowserPromptCancellation(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	started := make(chan struct{})
+	go func() {
+		open, err := confirmBrowser(ctx, &promptReader{Reader: reader, started: started})
+		if open {
+			result <- errors.New("opened browser without Enter")
+			return
+		}
+		result <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("lost cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("prompt blocked cancellation")
+	}
+}
+
+type promptReader struct {
+	io.Reader
+	started chan struct{}
+}
+
+func (r *promptReader) Read(p []byte) (int, error) {
+	select {
+	case <-r.started:
+	default:
+		close(r.started)
+	}
+	return r.Reader.Read(p)
+}
+
+func TestDeploymentDiagnosticsRedactCredential(t *testing.T) {
+	id := "11111111-1111-4111-8111-111111111111"
+	diagnostic := `{"id":"` + id + `","buildLogs":"build test-secret","errorMessage":"failed with test-secret"}`
+	for _, tc := range []struct {
+		args []string
+		body string
+	}{
+		{[]string{"deployments", "logs", id, "--json"}, diagnostic},
+		{[]string{"deployments", "logs", id}, diagnostic},
+		{[]string{"deployments", "list", "--app", id, "--json"}, `{"data":[` + diagnostic + `]}`},
+	} {
+		var out, stderr bytes.Buffer
+		options := Options{Out: &out, Err: &stderr, ConfigDir: func() (string, error) { return t.TempDir(), nil }, LookupEnv: func(key string) (string, bool) { return "test-secret", key == "DEPLEXO_TOKEN" }, Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+		})}
+		if code := Execute(context.Background(), options, tc.args); code != 0 || !strings.Contains(out.String(), "[REDACTED]") || strings.Contains(out.String()+stderr.String(), "test-secret") {
+			t.Fatalf("%v: code=%d output=%q stderr=%q", tc.args, code, out.String(), stderr.String())
+		}
 	}
 }
 
