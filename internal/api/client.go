@@ -122,7 +122,7 @@ func (c *Client) request(ctx context.Context, method, endpoint, token, contentTy
 	req.Header.Set("User-Agent", "deplexo-cli")
 	if token != "" {
 		if !ValidToken(token) {
-			return errors.New("credential has an invalid format")
+			return errors.New("token has an invalid format")
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -155,14 +155,14 @@ func (c *Client) request(ctx context.Context, method, endpoint, token, contentTy
 				code = nested.Code
 			}
 		}
-		// Only protocol decisions use the server code. Error text never echoes a response body.
+		// Server codes guide protocol handling. Keep response bodies out of errors because they may contain secrets.
 		return &Error{Status: resp.StatusCode, Code: code, RetryAfter: retryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if out == nil {
 		return nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return errors.New("API returned an invalid JSON response")
+		return errors.New("API response has an unexpected format")
 	}
 	return nil
 }

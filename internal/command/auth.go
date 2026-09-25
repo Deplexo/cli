@@ -43,13 +43,13 @@ func (a *application) authCommand() *cobra.Command {
 			}
 			return a.message(profile, "Signed in as "+profile.Email+".")
 		}}
-	login.Flags().StringVar(&rawScopes, "scopes", "", "Complete list of requested scopes, separated by spaces or commas")
-	login.Flags().BoolVar(&readOnly, "read-only", false, "Request profile, app, and log read access")
+	login.Flags().StringVar(&rawScopes, "scopes", "", "Scopes to request, separated by spaces or commas; replaces the defaults")
+	login.Flags().BoolVar(&readOnly, "read-only", false, "Request read access to your profile, apps, and logs")
 	login.Flags().BoolVar(&noBrowser, "no-browser", false, "Print pairing instructions without opening a browser")
 	group.AddCommand(login)
 	status := a.whoamiCommand()
-	status.Use, status.Short = "status", "Check the selected sign-in with the API"
-	group.AddCommand(status, &cobra.Command{Use: "logout", Short: "Revoke the selected session and remove its local credentials", Args: noArgs,
+	status.Use, status.Short = "status", "Check your current sign-in with the API"
+	group.AddCommand(status, &cobra.Command{Use: "logout", Short: "Sign out and remove the saved credentials for this profile", Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			manager, err := a.manager()
 			if err != nil {
@@ -66,7 +66,7 @@ func (a *application) authCommand() *cobra.Command {
 }
 
 func (a *application) whoamiCommand() *cobra.Command {
-	return &cobra.Command{Use: "whoami", Short: "Show the account used by the selected credential", Args: noArgs,
+	return &cobra.Command{Use: "whoami", Short: "Show the account used by this token or sign-in", Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			manager, err := a.manager()
 			if err != nil {

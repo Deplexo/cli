@@ -56,7 +56,7 @@ func Scopes(raw string, readOnly bool) ([]string, error) {
 		}
 	}
 	if len(raw) > 1024 {
-		return nil, output.Usage("requested scopes are too long")
+		return nil, output.Usage("requested scope list is too long")
 	}
 	values := strings.Fields(strings.ReplaceAll(raw, ",", " "))
 	slices.Sort(values)
@@ -101,7 +101,7 @@ func (m *Manager) Token(ctx context.Context, required ...string) (string, error)
 			return err
 		}
 		if s.Origin != m.API.Origin() || s.Profile != m.Profile || s.AccountID == "" || s.Pending || !api.ValidToken(s.AccessToken) || !api.ValidToken(s.RefreshToken) || !slices.Contains(s.Scopes, "profile:read") {
-			return output.SignIn("stored sign-in is unusable; run `deplexo auth login`")
+			return output.SignIn("stored sign-in cannot be used; run `deplexo auth login`")
 		}
 		for _, scope := range required {
 			if !slices.Contains(s.Scopes, scope) {
@@ -166,13 +166,13 @@ func (m *Manager) accept(ctx context.Context, v credentials.Vault, d api.Discove
 		return err
 	}
 	if err := v.Save(s); err != nil {
-		return fmt.Errorf("could not persist the sign-in: %w", err)
+		return fmt.Errorf("could not save the sign-in: %w", err)
 	}
 	saved(s)
 	return nil
 }
 
-// Login holds the same mutation lock as refresh and logout through approval and persistence.
+// Login keeps the refresh/logout lock until approval and credential storage finish.
 func (m *Manager) Login(ctx context.Context, scopes []string, pairing func(api.Device) error) (api.Profile, error) {
 	if m.TokenEnvSet {
 		return api.Profile{}, output.Usage("unset DEPLEXO_TOKEN before signing in")
@@ -212,7 +212,7 @@ func (m *Manager) Login(ctx context.Context, scopes []string, pairing func(api.D
 		}
 		if previous.RefreshToken != "" && previous.RefreshToken != t.RefreshToken {
 			if previous.Origin != m.API.Origin() || previous.Profile != m.Profile {
-				return errors.New("new sign-in saved; the previous record belonged to another origin or profile, so its server session was not revoked")
+				return errors.New("new sign-in saved; the previous sign-in belongs to another origin or profile and was not revoked")
 			}
 			if err := m.cleanup(d, previous.RefreshToken); err != nil {
 				return errors.New("new sign-in saved, but the previous session could not be revoked; remove the old CLI device in account settings")
@@ -259,7 +259,7 @@ func (m *Manager) poll(ctx context.Context, d api.Discovery, device api.Device) 
 
 func (m *Manager) Logout(ctx context.Context) error {
 	if m.TokenEnvSet {
-		return output.Usage("DEPLEXO_TOKEN is supplied by your environment; unset it to stop using it")
+		return output.Usage("DEPLEXO_TOKEN comes from your environment; unset it to stop using it")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()

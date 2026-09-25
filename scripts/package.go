@@ -1,6 +1,6 @@
 //go:build ignore
 
-// Run with go run scripts/package.go. This builds and verifies distributable archives.
+// Run with go run scripts/package.go to build release archives and check native packages.
 package main
 
 import (
@@ -236,7 +236,7 @@ func verify(path, binary, version string) error {
 			}
 		}
 		if !found {
-			copyErr = errors.New("binary missing from package")
+			copyErr = errors.New("package does not contain the executable")
 		}
 	} else {
 		source, err := os.Open(path)
@@ -279,7 +279,7 @@ func verify(path, binary, version string) error {
 		Version string `json:"version"`
 	}
 	if json.Unmarshal(data, &result) != nil || result.Version != version {
-		return errors.New("packaged version does not match")
+		return errors.New("packaged executable reports a different version")
 	}
 	if err := exec.Command(destination, "--help").Run(); err != nil {
 		return fmt.Errorf("packaged help failed: %w", err)

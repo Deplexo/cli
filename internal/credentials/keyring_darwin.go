@@ -18,7 +18,7 @@ type keyringVault struct {
 
 func openKeyring(ctx context.Context, key string, noInput bool) (Vault, func(), error) {
 	if noInput {
-		return nil, nil, errors.New("macOS Keychain may require a desktop prompt; use DEPLEXO_TOKEN or explicitly select --insecure-storage with --no-input")
+		return nil, nil, errors.New("macOS Keychain can open a desktop prompt; with --no-input, use DEPLEXO_TOKEN or --insecure-storage")
 	}
 	return &keyringVault{ctx: ctx, key: key}, func() {}, nil
 }

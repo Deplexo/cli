@@ -79,7 +79,7 @@ func newRoot(options Options) (*cobra.Command, *application) {
 		options.Version = "dev"
 	}
 	a := &application{options: options}
-	root := &cobra.Command{Use: "deplexo", Short: "Manage Deplexo apps from your terminal", SilenceErrors: true, SilenceUsage: true,
+	root := &cobra.Command{Use: "deplexo", Short: "Create and manage Deplexo apps from your terminal", SilenceErrors: true, SilenceUsage: true,
 		PersistentPreRun: func(*cobra.Command, []string) { a.started = true },
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
@@ -93,10 +93,10 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	root.SetErr(options.Err)
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return output.Usage(err.Error()) })
 	root.PersistentFlags().StringVar(&a.origin, "origin", "", "HTTPS API origin (DEPLEXO_ORIGIN)")
-	root.PersistentFlags().StringVar(&a.profile, "profile", "", "Credential profile (DEPLEXO_PROFILE)")
+	root.PersistentFlags().StringVar(&a.profile, "profile", "", "Sign-in profile (DEPLEXO_PROFILE)")
 	root.PersistentFlags().BoolVar(&a.insecure, "insecure-storage", false, "Use a plaintext credential file instead of the OS keyring")
 	root.PersistentFlags().BoolVar(&a.noInput, "no-input", false, "Disable prompts and automatic browser opening")
-	root.PersistentFlags().BoolVar(&a.json, "json", false, "Write JSON results; followed logs use JSONL")
+	root.PersistentFlags().BoolVar(&a.json, "json", false, "Write JSON; use one object per line with logs --follow")
 	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand())
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the CLI version", Args: noArgs,
 		RunE: func(*cobra.Command, []string) error {
@@ -134,7 +134,7 @@ var profilePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 func (a *application) manager() (*auth.Manager, error) {
 	base, err := a.options.ConfigDir()
 	if err != nil {
-		return nil, errors.New("could not locate the user configuration directory")
+		return nil, errors.New("could not find your configuration directory")
 	}
 	directory := filepath.Join(base, "deplexo")
 	settings, err := config.LoadSettings(directory)
@@ -175,7 +175,7 @@ func (a *application) selectedApp(flag string) (string, error) {
 	}
 	dir, err := a.options.WorkingDir()
 	if err != nil {
-		return "", errors.New("could not locate the current directory")
+		return "", errors.New("could not find the current directory")
 	}
 	project, err := config.LoadProject(dir)
 	if err != nil {

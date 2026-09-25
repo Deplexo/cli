@@ -49,7 +49,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Build archive and verify it when native
+      - name: Build archive and test it on matching hosts
         shell: bash
         env:
           TARGET_OS: ${{ matrix.os }}

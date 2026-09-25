@@ -14,12 +14,12 @@ import (
 )
 
 func (a *application) deploymentsCommand() *cobra.Command {
-	group := &cobra.Command{Use: "deployments", Short: "Inspect deployments and their build logs", Args: noArgs}
+	group := &cobra.Command{Use: "deployments", Short: "Show deployment history and build logs", Args: noArgs}
 	var appFlag string
 	var limit, offset int
 	list := &cobra.Command{Use: "list", Short: "List an app's deployments", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if limit < 1 || limit > 200 || offset < 0 {
-			return output.Usage("--limit must be 1 to 200 and --offset must be nonnegative")
+			return output.Usage("--limit must be 1 to 200 and --offset must be zero or greater")
 		}
 		id, err := a.selectedApp(appFlag)
 		if err != nil {
@@ -81,7 +81,7 @@ func (a *application) logsCommand() *cobra.Command {
 	var follow bool
 	var limit int
 	var timeout time.Duration
-	command := &cobra.Command{Use: "logs", Short: "Read runtime logs, optionally following new lines", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "logs", Short: "Show runtime logs and follow new lines with --follow", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if limit < 1 || limit > 1000 || timeout <= 0 {
 			return output.Usage("--limit must be 1 to 1000 and --timeout must be positive")
 		}
@@ -145,7 +145,7 @@ func (a *application) logsCommand() *cobra.Command {
 				return nil
 			}
 			if result.NextSince == "" {
-				return errors.New("API omitted the log cursor; cannot safely follow logs")
+				return errors.New("API response is missing the resume cursor; log following stopped")
 			}
 			cursor = result.NextSince
 			if err := auth.Sleep(ctx, 3*time.Second); err != nil {
@@ -154,7 +154,7 @@ func (a *application) logsCommand() *cobra.Command {
 		}
 	}}
 	command.Flags().StringVar(&appFlag, "app", "", "App UUID; defaults to .deplexo.json")
-	command.Flags().StringVar(&since, "since", "", "Resume cursor from an earlier log response")
+	command.Flags().StringVar(&since, "since", "", "Resume cursor (nextSince) from an earlier log response")
 	command.Flags().BoolVar(&follow, "follow", false, "Poll for new runtime logs using the server cursor")
 	command.Flags().IntVar(&limit, "limit", 500, "Maximum lines per request (1 to 1000)")
 	command.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Maximum time to follow logs")

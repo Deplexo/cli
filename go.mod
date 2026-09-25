@@ -1,6 +1,6 @@
 module github.com/Deplexo/cli
 
-go 1.26.0
+go 1.26.6
 
 require (
 	github.com/danieljoos/wincred v1.2.3

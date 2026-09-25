@@ -59,8 +59,8 @@ func (s *Store) WithLock(ctx context.Context, fn func(Vault) error) error {
 	if s.Insecure {
 		return fn(&fileVault{root: root, name: key + ".json"})
 	}
-	// Complete local mutations while holding the lock, even if a remote request was cancelled.
-	// Each native keyring call has its own bounded deadline.
+	// Finish local credential changes under the lock even if the API request was cancelled.
+	// Subprocess and D-Bus calls have their own timeouts.
 	vault, closeVault, err := openKeyring(context.WithoutCancel(ctx), key, s.NoInput)
 	if err != nil {
 		return err
@@ -129,10 +129,10 @@ func (v *fileVault) Save(s Session) error {
 	if err != nil || len(data) > 16384 {
 		return errors.New("could not encode the sign-in")
 	}
-	// The lock serializes writes. Exclusive creation detects stale files and symlinks.
+	// Exclusive creation prevents opening an unexpected file or symlink at the temporary path.
 	name := v.name + ".tmp"
 	if err := v.root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return errors.New("could not clear the previous credential write")
+		return errors.New("could not remove the temporary credential file")
 	}
 	f, err := openPrivate(v.root, name, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 	if err != nil {

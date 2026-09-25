@@ -51,7 +51,7 @@ func (a *application) appsCommand() *cobra.Command {
 				return err
 			}
 			if action.confirm && !yes {
-				return output.Usage("review the app UUID and pass --yes to confirm this operation")
+				return output.Usage("check the app UUID, then pass --yes to confirm")
 			}
 			manager, err := a.manager()
 			if err != nil {
@@ -116,7 +116,7 @@ func (a *application) createCommand() *cobra.Command {
 
 func (a *application) linkCommand() *cobra.Command {
 	var idFlag string
-	command := &cobra.Command{Use: "link", Short: "Associate this directory with an existing app", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "link", Short: "Link this directory to an existing app", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if idFlag == "" {
 			return output.Usage("--app is required")
 		}
@@ -144,12 +144,12 @@ func (a *application) linkCommand() *cobra.Command {
 		}
 		return a.message(config.Project{Version: 1, App: id}, "Linked this directory to app "+id+".")
 	}}
-	command.Flags().StringVar(&idFlag, "app", "", "App UUID to associate with this directory")
+	command.Flags().StringVar(&idFlag, "app", "", "App UUID to link to this directory")
 	return command
 }
 
 func (a *application) unlinkCommand() *cobra.Command {
-	return &cobra.Command{Use: "unlink", Short: "Remove this directory's app association", Args: noArgs, RunE: func(*cobra.Command, []string) error {
+	return &cobra.Command{Use: "unlink", Short: "Remove this directory's link to an app", Args: noArgs, RunE: func(*cobra.Command, []string) error {
 		dir, err := a.options.WorkingDir()
 		if err != nil {
 			return err
@@ -159,6 +159,6 @@ func (a *application) unlinkCommand() *cobra.Command {
 		}
 		return a.message(struct {
 			Unlinked bool `json:"unlinked"`
-		}{true}, "Removed the app association.")
+		}{true}, "Removed the link to the app.")
 	}}
 }

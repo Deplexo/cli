@@ -1,19 +1,19 @@
 # Deplexo CLI
 
-`deplexo` is a Go client for Deplexo's public API. It supports device sign-in, account checks, app creation from Git, app controls, project association, deployment history, and logs.
+`deplexo` lets you sign in to Deplexo, create apps from Git repositories, control apps, and read deployment history and logs. You can link a local directory to an app so you do not need to pass its UUID each time. The CLI is written in Go and uses the public API.
 
-This repository is under development. The build workflow produces Linux, macOS, and Windows archives for amd64 and arm64. Native keyring and filesystem tests must pass on each target before a release claims support for that target. No production credentials or private repositories are needed to build or test it.
+The CLI is under development. Builds target Linux, macOS, and Windows on amd64 and arm64. Each target needs passing native keyring and filesystem tests before it can be listed as supported in a release. You can build and test the code without production credentials or private repositories.
 
 ## Build
 
-Install Go 1.26 or later, then run:
+Install Go 1.26.6 or later, then run:
 
 ```sh
 go build -trimpath -o bin/deplexo ./cmd/deplexo
 ./bin/deplexo --help
 ```
 
-On Windows, use `-o bin/deplexo.exe`. Build outputs stay in this repository; the build does not replace an installed executable.
+On Windows, use `-o bin/deplexo.exe`. These commands put the executable in this repository's `bin` directory and leave any installed copy alone.
 
 ## Sign in
 
@@ -26,11 +26,13 @@ deplexo auth logout
 
 Sign-in prints the verification URL and pairing code before opening your browser. Use `--no-browser` to open the URL yourself. `--no-input` disables CLI prompts and automatic browser opening. Ordinary commands never start sign-in.
 
-The default scopes are `profile:read app:read app:deploy logs:read`. Use `--read-only` for read access, or `--scopes` to supply the complete scope set. Stored sign-ins require `profile:read`. App start, stop, and delete need their respective scopes; request those explicitly when needed.
+Sign-in requests `profile:read app:read app:deploy logs:read` by default. Use `--read-only` for read access. `--scopes` replaces the defaults with the scopes you specify and must include `profile:read` for a stored sign-in. To start, stop, or delete apps, also request `app:start`, `app:stop`, or `app:delete` as needed.
 
-Credentials use Linux Secret Service, macOS Keychain, or Windows Credential Manager. Unlock the keyring before use. Linux does not open a desktop unlock prompt. On macOS, `--no-input` requires `DEPLEXO_TOKEN` or explicit file storage because the Keychain command can request desktop approval. File storage requires an explicit `--insecure-storage` on each invocation. It stores plaintext with owner-only permissions or a Windows owner-only ACL. The CLI never silently falls back to a file.
+The CLI stores credentials in Linux Secret Service, macOS Keychain, or Windows Credential Manager. Unlock your keyring before running a command; the Linux adapter will not open an unlock prompt. macOS Keychain can request desktop approval, so `--no-input` on macOS requires `DEPLEXO_TOKEN` or `--insecure-storage`.
 
-For automation, supply a scoped API key through your CI secret manager as `DEPLEXO_TOKEN`. It takes precedence over stored sign-ins and is never saved or refreshed. An invalid injected token fails without switching accounts. There is no token command-line flag. Unset `DEPLEXO_TOKEN` before interactive sign-in or sign-out.
+To use a plaintext credential file, pass `--insecure-storage` on every command that needs it. File permissions, or a Windows ACL, restrict access to your account. The CLI will not switch to file storage unless you request it.
+
+For automation, set `DEPLEXO_TOKEN` to a scoped API key through your CI secret manager. The CLI uses it before any stored sign-in and never saves or refreshes it. If the token is invalid, the command fails without trying another account. Tokens are not accepted as command-line flags. Unset `DEPLEXO_TOKEN` before signing in or out interactively.
 
 ## Apps and logs
 
@@ -47,11 +49,11 @@ deplexo apps start
 deplexo unlink
 ```
 
-App selection uses `--app`, then `.deplexo.json` in the current directory. Linking checks access before writing the file. The project file holds only a format version and app UUID. It cannot select an account or API origin.
+Commands use the app UUID from `--app`, or from `.deplexo.json` in the current directory when the flag is omitted. `link` checks your access before writing that file. The file contains only a format version and app UUID; it cannot change the account or API origin.
 
-`apps create` always creates an app and its first deployment. It prints both UUIDs. Creation is not retried after an ambiguous response; check the dashboard before retrying. App stop, cancellation, and deletion require `--yes`. Stopping an app differs from cancelling its current deployment.
+`apps create` creates a new app and its first deployment, then prints both UUIDs. If the response leaves the outcome unclear, the CLI stops without retrying. Check the dashboard before trying again. Stopping an app, cancelling a deployment, and deleting an app require `--yes`; stopping the app does not mean cancelling its current deployment.
 
-Runtime `logs --follow` polls the documented cursor API, passes resume cursors unchanged, and deduplicates recent stable event IDs. It stops after `--timeout` (30 minutes by default). Build logs are snapshots for the requested deployment UUID.
+`logs --follow` requests new runtime logs using the server's resume cursor and filters repeated lines by their recent event IDs. It passes the cursor back unchanged and stops after `--timeout`, which defaults to 30 minutes. Build log commands return a snapshot for the deployment UUID you request.
 
 ## Configuration and output
 
@@ -74,7 +76,7 @@ Results go to stdout; pairing instructions and errors go to stderr. `--json` wri
 
 ## API gaps
 
-The CLI does not expose proposed endpoints. Dedicated app listing, deployment to an existing app with `app:deploy`, metadata-only deployment polling, and public build-log streaming need confirmed public contracts. Local-directory and ZIP deployment are not implemented until the upload and existing-app deployment contracts are published together. `apps create --repo` uses the documented creation endpoint. The CLI does not use browser cookies or private RPCs.
+App listing, deployment to an existing app with `app:deploy`, deployment status polling without logs, and build log streaming still need confirmed public API contracts. Local directory and ZIP deployment also remain unimplemented until the upload and existing-app deployment contracts are published together. These features are not registered as commands. `apps create --repo` uses the documented creation endpoint. The CLI uses neither browser cookies nor private RPCs.
 
 ## Verification and workflows
 
@@ -88,12 +90,12 @@ govulncheck ./...
 go run scripts/package.go
 ```
 
-Packaging creates an archive, checksum, and third-party license notices. When the target matches the build host, it extracts and runs the actual packaged executable to check version and help.
+The packaging script writes an archive and checksum, with dependency licenses included in the archive. When the target matches the build host, it extracts the packaged executable and checks its version and help output.
 
-All workflows use self-hosted runners. CI tests trusted `main` pushes and builds six target archives. It also supports manual runs. It deliberately has no automatic fork-PR trigger: fork code must not execute on a persistent runner with access to organizational resources. Review contributions before running them on a trusted branch; use disposable, isolated runners for untrusted changes. CI needs no production secrets.
+All workflows use self-hosted runners. CI runs on pushes to `main` or when started manually, then builds archives for all six targets. Fork pull requests do not trigger it automatically. Review contributions before running them on a trusted branch; use disposable, isolated runners for untrusted code so it cannot access organizational resources. CI needs no production secrets.
 
-The native workflow selects a runner by its `self-hosted`, OS, and architecture labels. Runners need Go-compatible C tooling for the race detector, Bash (Git Bash on Windows), and an isolated unlocked native keyring. Set `DEPLEXO_TEST_NATIVE_KEYRING=1` to run the native round-trip test locally. The test creates and deletes its own uniquely named entry. A skipped native test is not evidence of platform support.
+The native workflow selects a runner by its `self-hosted`, OS, and architecture labels. Runners need Bash (Git Bash on Windows) and an isolated, unlocked native keyring. Targets that support Go's race detector also need a C compiler supported by Go. Windows ARM64 runs ordinary tests because Go does not support race tests there. Set `DEPLEXO_TEST_NATIVE_KEYRING=1` to test keyring storage locally. The test saves, reads, and deletes its own uniquely named entry. Skipping it leaves native credential storage unverified.
 
-The release workflow runs for a version tag pointing to a commit on `main`, verifies source, builds archives, and creates a draft GitHub release with checksums and provenance. Configure required reviewers on the `release` environment and provision isolated release runners before using it. Review native test results for every advertised target before publishing the draft. The release runner also needs `gh` and `sha256sum`.
+A version tag pointing to a commit on `main` starts the release workflow. It checks the source, builds archives, and creates a draft GitHub release with checksums and provenance. Before using it, configure required reviewers on the `release` environment and set up isolated release runners with `gh` and `sha256sum`. Check native test results for every listed target before publishing the draft.
 
 Licensed under Apache-2.0. Dependencies retain their own licenses, included in packaged artifacts.

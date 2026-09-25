@@ -23,7 +23,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Validate the release ref
+      - name: Check the release tag
         shell: bash
         env:
           RELEASE_TAG: ${{ github.ref_name }}

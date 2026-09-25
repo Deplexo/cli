@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       os:
-        description: Native runner OS label
+        description: Operating system label on the runner
         required: true
         type: choice
         options: [Linux, macOS, Windows]
       arch:
-        description: Native runner architecture label
+        description: Architecture label on the runner
         required: true
         type: choice
         options: [X64, ARM64]
@@ -29,10 +29,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Native tests and credential permissions
+      - name: Test the CLI and credential permissions
         shell: bash
         run: bash scripts/test.sh
-      - name: Native keyring round trip
+      - name: Save, read, and remove a test keyring entry
         shell: bash
         env:
           DEPLEXO_TEST_NATIVE_KEYRING: '1'

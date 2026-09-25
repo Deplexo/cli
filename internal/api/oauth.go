@@ -84,7 +84,7 @@ func (c *Client) Authorize(ctx context.Context, d Discovery, scopes string) (Dev
 		u, _ := url.Parse(device.VerificationURIComplete)
 		query, err := url.ParseQuery(u.RawQuery)
 		if err != nil || u.Path != "/new-devices" || len(query) != 1 || len(query["user_code"]) != 1 || query.Get("user_code") != device.UserCode {
-			return device, errors.New("server returned an invalid prefilled verification URL")
+			return device, errors.New("server returned an invalid verification URL with a pairing code")
 		}
 	}
 	return device, nil
@@ -117,7 +117,7 @@ func (c *Client) Profile(ctx context.Context, token string) (Profile, error) {
 	var profile Profile
 	err := c.get(ctx, "/profile", token, &profile)
 	if err == nil && (profile.ID == "" || profile.Email == "") {
-		err = errors.New("API returned an incomplete account profile")
+		err = errors.New("API response is missing the account ID or email")
 	}
 	return profile, err
 }
