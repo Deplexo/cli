@@ -1,6 +1,9 @@
 #Requires -Version 5.1
 [CmdletBinding()]
-param([string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Deplexo\bin'))
+param(
+    [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Deplexo\bin'),
+    [string]$Version = $env:DEPLEXO_VERSION
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -10,13 +13,24 @@ $cpu = $env:PROCESSOR_ARCHITECTURE
 if ($env:PROCESSOR_ARCHITEW6432) { $cpu = $env:PROCESSOR_ARCHITEW6432 }
 $arch = switch ($cpu) { 'AMD64' { 'amd64' } 'ARM64' { 'arm64' } default { throw 'This CPU architecture is not supported.' } }
 $repo = 'https://github.com/Deplexo/cli'
-try {
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/Deplexo/cli/releases/latest' -TimeoutSec 30
+$number = '(0|[1-9][0-9]*)'
+$identifier = "($number|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+$versionPattern = "\Av$number\.$number\.$number(-$identifier(\.$identifier)*)?\z"
+$releaseUri = 'https://api.github.com/repos/Deplexo/cli/releases/latest'
+if ($Version) {
+    if ($Version -cnotmatch $versionPattern) { throw 'Version must be a release tag such as v0.1.0 or v0.1.0-beta.1.' }
+    $releaseUri = "https://api.github.com/repos/Deplexo/cli/releases/tags/$Version"
 }
-catch { throw 'No stable release is available, or GitHub could not be reached. Check https://github.com/Deplexo/cli/releases.' }
+try {
+    $release = Invoke-RestMethod -Uri $releaseUri -TimeoutSec 30
+}
+catch { throw 'The requested release is unavailable, or GitHub could not be reached. Check https://github.com/Deplexo/cli/releases.' }
 $tag = $release.tag_name
-if ($tag -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or $release.draft -or $release.prerelease) {
-    throw 'GitHub did not return a valid stable release.'
+if ($tag -cnotmatch $versionPattern -or $release.draft -or ($Version -and $tag -cne $Version)) {
+    throw 'GitHub did not return the requested release.'
+}
+if (-not $Version -and ($release.prerelease -or $tag.Contains('-'))) {
+    throw 'GitHub did not return a stable release. Use -Version to select a prerelease.'
 }
 $work = Join-Path ([IO.Path]::GetTempPath()) ('deplexo-install-' + [guid]::NewGuid())
 $stage = $null
@@ -55,10 +69,11 @@ try {
     $stage = $null
     Write-Host "Installed Deplexo $tag at $target"
     if (($env:PATH -split ';') -notcontains $InstallDir) { Write-Host "Add $InstallDir to your user PATH, then open a new terminal." }
-    Write-Host 'Run deplexo auth login to sign in. Run this installer again to update.'
+    Write-Host 'Run deplexo auth login to sign in.'
+    if ($Version) { Write-Host 'To update, choose a newer -Version.' }
+    else { Write-Host 'Run this installer again to update.' }
 }
 finally {
     if ($stage -and (Test-Path -LiteralPath $stage)) { Remove-Item -LiteralPath $stage -Force }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }
-

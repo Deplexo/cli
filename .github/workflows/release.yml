@@ -17,6 +17,8 @@ jobs:
     if: github.ref_type == 'tag'
     runs-on: [self-hosted, Linux]
     timeout-minutes: 30
+    outputs:
+      beta: ${{ steps.release.outputs.beta }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,10 +30,17 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Check the release tag
+        id: release
         shell: bash
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: go run scripts/package.go -check-release -version "$RELEASE_TAG"
+        run: |
+          go run scripts/package.go -check-release -version "$RELEASE_TAG"
+          if [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            echo "beta=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "beta=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Verify source and build release archives
         shell: bash
         env:
@@ -55,6 +64,7 @@ jobs:
           retention-days: 7
   native:
     needs: build
+    if: needs.build.outputs.beta != 'true'
     runs-on:
       [self-hosted, "${{ matrix.runner_os }}", "${{ matrix.runner_arch }}"]
     timeout-minutes: 25
@@ -121,6 +131,7 @@ jobs:
           go run scripts/package.go -verify "release-archives/deplexo_${RELEASE_TAG}_${TARGET_OS}_${TARGET_ARCH}.${ARCHIVE_EXT}" -version "$RELEASE_TAG" -commit "$source_commit"
   draft:
     needs: [build, native]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.native.result == 'success' || (needs.build.outputs.beta == 'true' && needs.native.result == 'skipped')) }}
     runs-on: [self-hosted, Linux]
     environment: release
     timeout-minutes: 10

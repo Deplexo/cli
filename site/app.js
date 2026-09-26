@@ -4,22 +4,19 @@ const commands = {
   linux: {
     code: "curl -fsSL https://cli.deplexo.com/install.sh | sh",
     shell: "sh / bash / zsh",
-    detail:
-      "Installs the latest stable release to ~/.local/bin. Run it again to update.",
+    destination: "~/.local/bin",
     script: "./install.sh",
   },
   macos: {
     code: "curl -fsSL https://cli.deplexo.com/install.sh | sh",
     shell: "sh / bash / zsh",
-    detail:
-      "Installs the latest stable release to ~/.local/bin. Run it again to update.",
+    destination: "~/.local/bin",
     script: "./install.sh",
   },
   windows: {
     code: "& ([scriptblock]::Create((Invoke-RestMethod -ErrorAction Stop 'https://cli.deplexo.com/install.ps1')))",
     shell: "PowerShell",
-    detail:
-      "Installs the latest stable release to %LOCALAPPDATA%\\Deplexo\\bin. Run it again to update.",
+    destination: "%LOCALAPPDATA%\\Deplexo\\bin",
     script: "./install.ps1",
   },
 };
@@ -27,16 +24,25 @@ const code = document.querySelector("#install-code");
 const copy = document.querySelector("#copy");
 const status = document.querySelector("#copy-status");
 let copyTimer;
+let selectedOS;
+let betaVersion;
 function selectOS(os) {
+  selectedOS = os;
   const command = commands[os];
   document
     .querySelectorAll("[data-os]")
     .forEach((button) =>
       button.setAttribute("aria-pressed", String(button.dataset.os === os)),
     );
-  code.textContent = command.code;
+  code.textContent = betaVersion
+    ? os === "windows"
+      ? `${command.code} -Version '${betaVersion}'`
+      : command.code.replace("| sh", `| DEPLEXO_VERSION=${betaVersion} sh`)
+    : command.code;
   document.querySelector("#shell-label").textContent = command.shell;
-  document.querySelector("#install-detail").textContent = command.detail;
+  document.querySelector("#install-detail").textContent = betaVersion
+    ? `Installs beta ${betaVersion} to ${command.destination}. Change the pinned version to update.`
+    : `Installs the latest stable release to ${command.destination}. Run it again to update.`;
   document.querySelector("#script-link").href = command.script;
   copy.textContent = "Copy";
   status.textContent = "";
@@ -73,20 +79,12 @@ copy.addEventListener("click", async () => {
 });
 
 const releaseStatus = document.querySelector("#release-status");
-fetch("https://api.github.com/repos/Deplexo/cli/releases/latest", {
-  signal: AbortSignal.timeout(6000),
-})
-  .then(async (response) => {
-    if (response.status === 404) {
-      releaseStatus.textContent = "No stable release published yet ↗";
-      document
-        .querySelector(".install-note")
-        .prepend(
-          "Installation will be available when the first stable release is published. ",
-        );
-      return;
-    }
-    if (!response.ok) return;
+async function loadRelease() {
+  const response = await fetch(
+    "https://api.github.com/repos/Deplexo/cli/releases/latest",
+    { signal: AbortSignal.timeout(6000) },
+  );
+  if (response.ok) {
     const release = await response.json();
     if (
       /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(
@@ -97,7 +95,37 @@ fetch("https://api.github.com/repos/Deplexo/cli/releases/latest", {
     ) {
       releaseStatus.textContent = `${release.tag_name} · Latest release ↗`;
     }
-  })
-  .catch(() => {
-    /* Installation links remain usable when the API is unavailable. */
-  });
+    return;
+  }
+  if (response.status !== 404) return;
+  releaseStatus.textContent = "No stable release published yet ↗";
+  const betas = await fetch(
+    "https://api.github.com/repos/Deplexo/cli/releases?per_page=20",
+    { signal: AbortSignal.timeout(6000) },
+  );
+  if (!betas.ok) return;
+  const releases = await betas.json();
+  if (!Array.isArray(releases)) return;
+  const beta = releases.find(
+    (release) =>
+      !release.draft &&
+      release.prerelease &&
+      /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-beta\.(0|[1-9][0-9]*)$/.test(
+        release.tag_name,
+      ),
+  );
+  if (!beta) return;
+  betaVersion = beta.tag_name;
+  releaseStatus.textContent = `${betaVersion} · Beta release ↗`;
+  releaseStatus.href = `https://github.com/Deplexo/cli/releases/tag/${betaVersion}`;
+  document.querySelector("#install-title").textContent = "Install the beta";
+  document
+    .querySelector(".install-note")
+    .prepend(
+      "This is a beta. Native testing is incomplete; check the release notes for your platform. ",
+    );
+  selectOS(selectedOS);
+}
+loadRelease().catch(() => {
+  /* Release links remain usable when the API is unavailable. */
+});

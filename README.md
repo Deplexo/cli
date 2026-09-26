@@ -8,21 +8,21 @@ The CLI is under development. Builds target Linux, macOS, and Windows on amd64 a
 
 ## Install
 
-Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. On Linux or macOS:
+Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The first download is `v0.1.0-beta.1`; native testing is incomplete, so check the release notes for your platform. To install the beta on Linux or macOS:
 
 ```sh
-curl -fsSL https://cli.deplexo.com/install.sh | sh
+curl -fsSL https://cli.deplexo.com/install.sh | DEPLEXO_VERSION=v0.1.0-beta.1 sh
 ```
 
 On Windows, run this in PowerShell:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-RestMethod -ErrorAction Stop 'https://cli.deplexo.com/install.ps1')))
+& ([scriptblock]::Create((Invoke-RestMethod -ErrorAction Stop 'https://cli.deplexo.com/install.ps1'))) -Version 'v0.1.0-beta.1'
 ```
 
-The installers select the latest published stable release for your OS and CPU, verify its SHA-256 checksum, and install to `~/.local/bin` or `%LOCALAPPDATA%\Deplexo\bin`. Add that directory to your PATH if needed. Run the same command again to update. Set `DEPLEXO_INSTALL_DIR` on Linux/macOS or pass `-InstallDir` to the downloaded PowerShell script to use another directory. No administrator access is needed for the default destination.
+The installers download the selected version for your OS and CPU, verify its SHA-256 checksum, and install to `~/.local/bin` or `%LOCALAPPDATA%\Deplexo\bin`. Add that directory to your PATH if needed. Choose a newer version to update a pinned installation. Set `DEPLEXO_INSTALL_DIR` on Linux/macOS or pass `-InstallDir` to the downloaded PowerShell script to use another directory. No administrator access is needed for the default destination.
 
-Installation requires a published stable release; it does not use development artifacts or release candidates. You can [read the scripts](site/) before running them or download a versioned archive from [GitHub Releases](https://github.com/Deplexo/cli/releases). Pin a version in CI.
+Omit `DEPLEXO_VERSION` or `-Version` to select the latest published stable release. This default never installs a beta or release candidate. PowerShell also accepts `DEPLEXO_VERSION` when `-Version` is omitted. You can [read the scripts](site/) before running them or download a versioned archive from [GitHub Releases](https://github.com/Deplexo/cli/releases). Pin a version in CI.
 
 ## Build
 
@@ -116,16 +116,16 @@ All workflows use self-hosted runners. CI runs on pushes to `main` or when start
 
 The native workflow selects a runner by its `self-hosted`, OS, and architecture labels. Runners need Bash (Git Bash on Windows) and an isolated, unlocked native keyring. Targets that support Go's race detector also need a C compiler supported by Go. Windows ARM64 runs ordinary tests because Go does not support race tests there. Set `DEPLEXO_TEST_NATIVE_KEYRING=1` to test keyring storage locally. The test saves, reads, and deletes its own uniquely named entry. Skipping it leaves native credential storage unverified.
 
-Release Please prepares a version and changelog PR from Conventional Commits. Merging that PR creates an immutable tag and a draft release, then explicitly dispatches release verification at the tag. The packaging tool checks that the tag, release manifest and clean source commit agree. All six native platform jobs must pass, including uncached keyring and installer tests, before checksums, archives and provenance are attached to the draft. A reviewer publishes the verified draft after the protected `release` environment approval. An existing published release cannot be overwritten by this workflow.
+Release Please prepares a version and changelog PR from Conventional Commits. Merging that PR creates an immutable tag and a draft release, then explicitly dispatches release verification at the tag. The packaging tool checks that the tag, release manifest and clean source commit agree. Stable releases and release candidates require all six native platform jobs to pass, including uncached keyring and installer tests. Tags ending in `-beta.N` may publish cross-compiled prereleases after build, test, lint and vulnerability checks; their release notes must state which native checks remain pending. Both paths attach checksums and provenance and require approval through the protected `release` environment. An existing published release cannot be overwritten by this workflow.
 
 The `release` environment needs required reviewers and `v*` tag restrictions. Release runners need Bash, `gh` and `sha256sum`; native runners need an isolated unlocked keyring. GitHub Actions must be allowed to create release PRs; set the repository variable `RELEASE_PRS_ENABLED=true` after that permission is available. Version automation stays disabled until then. If verification is interrupted, dispatch `release.yml` again at the same tag. Only draft assets can be replaced on a retry. The separate Pages workflow publishes the static `site/` directory from `main` using a self-hosted Linux runner.
 
 ## Version policy
 
-The first release is `v0.1.0`. Release tags use `vMAJOR.MINOR.PATCH`; release candidates use a suffix such as `-rc.1`. Invalid SemVer identifiers are rejected. Public release tags exclude build metadata so package managers never have to distinguish two releases with the same precedence.
+The first beta is `v0.1.0-beta.1`; the planned first stable release is `v0.1.0`. Release tags use `vMAJOR.MINOR.PATCH`, with prerelease suffixes such as `-beta.1` or `-rc.1`. Invalid SemVer identifiers are rejected. Public release tags exclude build metadata so package managers never have to distinguish two releases with the same precedence.
 
 During 0.x development, fixes increment patch; features and breaking changes increment minor. From 1.0 onward, incompatible changes increment major. The compatibility contract covers command names, flags, defaults, exit codes, JSON/JSONL fields and configuration formats. Human-readable tables are for people; scripts should use `--json`. At 1.x, removal follows a documented deprecation in an earlier minor release, except urgent security fixes with migration notes.
 
-Release Please owns `.release-please-manifest.json`; the tag identifies each published build. `deplexo version --json` reports version, source commit, OS and architecture. Local checkouts report `dev` or `dev-dirty`, while versioned `go install` builds use Go's module build information. Release candidates are marked as prereleases and excluded from the installer's stable channel. Release notes need a wording and compatibility review before publication.
+Release Please owns `.release-please-manifest.json`; the tag identifies each published build. `deplexo version --json` reports version, source commit, OS and architecture. Local checkouts report `dev` or `dev-dirty`, while versioned `go install` builds use Go's module build information. Betas and release candidates are marked as prereleases and excluded from the installer's default stable channel. Release notes need a wording and compatibility review before publication.
 
 Licensed under Apache-2.0. Dependencies retain their own licenses, included in packaged artifacts.

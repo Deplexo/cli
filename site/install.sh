@@ -11,7 +11,7 @@ download() {
 }
 
 main() {
-	[ "$#" -eq 0 ] || fail 'This installer takes no arguments. Set DEPLEXO_INSTALL_DIR to change the destination.'
+	[ "$#" -eq 0 ] || fail 'This installer takes no arguments. Set DEPLEXO_VERSION to select a release or DEPLEXO_INSTALL_DIR to change the destination.'
 	command -v curl >/dev/null 2>&1 || fail 'Install curl, then run this command again.'
 	command -v tar >/dev/null 2>&1 || fail 'Install tar, then run this command again.'
 	case "$(uname -s)" in
@@ -33,10 +33,18 @@ main() {
 	fi
 
 	repo=https://github.com/Deplexo/cli
-	release_url=$(download --output /dev/null --write-out '%{url_effective}' "$repo/releases/latest") || fail 'No stable release is available, or GitHub could not be reached. Check https://github.com/Deplexo/cli/releases.'
-	case "$release_url" in "$repo"/releases/tag/v*) tag=${release_url##*/} ;; *) fail 'GitHub did not return a stable release.' ;; esac
-	# Only a stable three-part release can be installed through this channel.
-	printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || fail 'GitHub returned an invalid stable version.'
+	if [ -n "${DEPLEXO_VERSION:-}" ]; then
+		tag=$DEPLEXO_VERSION
+		case "$tag" in *[!0-9A-Za-z.-]*) fail 'DEPLEXO_VERSION must be a release tag such as v0.1.0 or v0.1.0-beta.1.' ;; esac
+		number='(0|[1-9][0-9]*)'
+		identifier="($number|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+		printf '%s\n' "$tag" | LC_ALL=C grep -Eq "^v$number\.$number\.$number(-$identifier(\.$identifier)*)?$" || fail 'DEPLEXO_VERSION must be a release tag such as v0.1.0 or v0.1.0-beta.1.'
+	else
+		release_url=$(download --output /dev/null --write-out '%{url_effective}' "$repo/releases/latest") || fail 'No stable release is available, or GitHub could not be reached. Check https://github.com/Deplexo/cli/releases.'
+		case "$release_url" in "$repo"/releases/tag/v*) tag=${release_url##*/} ;; *) fail 'GitHub did not return a stable release.' ;; esac
+		# Prereleases require an explicit version; the default channel stays stable.
+		printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || fail 'GitHub returned an invalid stable version.'
+	fi
 
 	umask 077
 	work=$(mktemp -d "${TMPDIR:-/tmp}/deplexo-install.XXXXXXXX") || fail 'Could not create a temporary directory.'
@@ -73,7 +81,12 @@ main() {
 	stage=
 	printf 'Installed Deplexo %s at %s/deplexo\n' "$tag" "$destination"
 	case ":$PATH:" in *":$destination:"*) ;; *) printf 'Add %s to your PATH, then open a new terminal.\n' "$destination" ;; esac
-	printf 'Run deplexo auth login to sign in. Run this installer again to update.\n'
+	printf 'Run deplexo auth login to sign in.\n'
+	if [ -n "${DEPLEXO_VERSION:-}" ]; then
+		printf 'To update, choose a newer DEPLEXO_VERSION.\n'
+	else
+		printf 'Run this installer again to update.\n'
+	fi
 }
 
 # A complete function prevents a truncated download from running a partial install.

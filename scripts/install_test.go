@@ -18,8 +18,19 @@ func TestShellInstaller(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell installer is for Linux and macOS")
 	}
-	for _, scenario := range []string{"install", "update", "corrupt", "missing-checksum", "duplicate-checksum", "no-release", "invalid-version", "unsupported-cpu", "bad-binary", "destination-directory"} {
+	for _, scenario := range []string{"install", "update", "beta", "pinned-stable", "invalid-pinned", "newline-pinned", "prerelease-latest", "corrupt", "missing-checksum", "duplicate-checksum", "no-release", "invalid-version", "unsupported-cpu", "bad-binary", "destination-directory"} {
 		t.Run(scenario, func(t *testing.T) {
+			tag, version := "v0.1.0", ""
+			switch scenario {
+			case "beta":
+				tag, version = "v0.1.0-beta.1", "v0.1.0-beta.1"
+			case "pinned-stable":
+				version = tag
+			case "invalid-pinned":
+				version = "v0.1.0-beta.01"
+			case "newline-pinned":
+				version = "v0.1.0\nv0.2.0"
+			}
 			root := t.TempDir()
 			bin := filepath.Join(root, "commands")
 			dest := filepath.Join(root, "installed bin")
@@ -69,7 +80,7 @@ func TestShellInstaller(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			checksum := fmt.Sprintf("%x  deplexo_v0.1.0_linux_arm64.tar.gz\n", sha256.Sum256(data))
+			checksum := fmt.Sprintf("%x  deplexo_%s_linux_arm64.tar.gz\n", sha256.Sum256(data), tag)
 			switch scenario {
 			case "corrupt":
 				checksum = strings.Repeat("0", 64) + "  deplexo_v0.1.0_linux_arm64.tar.gz\n"
@@ -92,17 +103,22 @@ while [ "$#" -gt 0 ]; do
 done
 if [ "$effective" = true ]; then
   [ "$SCENARIO" != no-release ] || exit 22
-  if [ "$SCENARIO" = invalid-version ]; then echo https://github.com/Deplexo/cli/releases/tag/v01.0.0; else echo https://github.com/Deplexo/cli/releases/tag/v0.1.0; fi
+  [ "$SCENARIO" != beta ] && [ "$SCENARIO" != pinned-stable ] || exit 23
+  if [ "$SCENARIO" = invalid-version ]; then echo https://github.com/Deplexo/cli/releases/tag/v01.0.0
+  elif [ "$SCENARIO" = prerelease-latest ]; then echo https://github.com/Deplexo/cli/releases/tag/v0.1.0-beta.1
+  else echo https://github.com/Deplexo/cli/releases/tag/v0.1.0; fi
 elif [ "${url##*/}" = SHA256SUMS ]; then
+  [ "$url" = "https://github.com/Deplexo/cli/releases/download/$EXPECTED_TAG/SHA256SUMS" ] || exit 24
   cp "$FIXTURE/checksums" "$output"
 else
+  [ "$url" = "https://github.com/Deplexo/cli/releases/download/$EXPECTED_TAG/deplexo_${EXPECTED_TAG}_linux_arm64.tar.gz" ] || exit 25
   cp "$FIXTURE/fixture.tar.gz" "$output"
 fi
 `)
 			cmd := exec.Command("sh", "../site/install.sh")
-			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "DEPLEXO_INSTALL_DIR="+dest, "TMPDIR="+root, "FIXTURE="+root, "SCENARIO="+scenario)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "DEPLEXO_INSTALL_DIR="+dest, "DEPLEXO_VERSION="+version, "EXPECTED_TAG="+tag, "TMPDIR="+root, "FIXTURE="+root, "SCENARIO="+scenario)
 			out, err := cmd.CombinedOutput()
-			success := scenario == "install" || scenario == "update"
+			success := scenario == "install" || scenario == "update" || scenario == "beta" || scenario == "pinned-stable"
 			if success && err != nil || !success && err == nil {
 				t.Fatalf("unexpected result %v: %s", err, out)
 			}
@@ -171,8 +187,19 @@ func TestWindowsInstaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-	for _, scenario := range []string{"install", "update", "corrupt", "missing-checksum", "no-release"} {
+	for _, scenario := range []string{"install", "update", "beta", "pinned-stable", "invalid-pinned", "prerelease-latest", "wrong-tag", "corrupt", "missing-checksum", "no-release"} {
 		t.Run(scenario, func(t *testing.T) {
+			tag, version := "v0.1.0", ""
+			switch scenario {
+			case "beta":
+				tag, version = "v0.1.0-beta.1", "v0.1.0-beta.1"
+			case "pinned-stable":
+				version = tag
+			case "invalid-pinned":
+				version = "v0.1.0-beta.01"
+			case "wrong-tag":
+				version = "v0.2.0"
+			}
 			dir := t.TempDir()
 			dest := filepath.Join(dir, "[installed] bin")
 			if err := os.Mkdir(dest, 0700); err != nil {
@@ -185,7 +212,7 @@ func TestWindowsInstaller(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			checksum := fmt.Sprintf("%x  deplexo_v0.1.0_windows_%s.zip\n", sha256.Sum256(packed), runtime.GOARCH)
+			checksum := fmt.Sprintf("%x  deplexo_%s_windows_%s.zip\n", sha256.Sum256(packed), tag, runtime.GOARCH)
 			switch scenario {
 			case "corrupt":
 				checksum = strings.Repeat("0", 64) + "  deplexo_v0.1.0_windows_" + runtime.GOARCH + ".zip\n"
@@ -198,14 +225,26 @@ func TestWindowsInstaller(t *testing.T) {
 			}
 			harness := "$ErrorActionPreference = 'Stop'\n"
 			harness += "function Invoke-RestMethod { param($Uri, $TimeoutSec) "
+			apiPath := "latest"
+			if version != "" {
+				apiPath = "tags/" + version
+			}
+			harness += "if ($Uri -cne " + quote("https://api.github.com/repos/Deplexo/cli/releases/"+apiPath) + ") { throw 'wrong release endpoint' }; "
 			if scenario == "no-release" {
 				harness += "throw 'no release'"
 			} else {
-				harness += "return @{tag_name='v0.1.0'; draft=$false; prerelease=$false}"
+				prerelease := "$false"
+				if scenario == "beta" || scenario == "prerelease-latest" {
+					prerelease = "$true"
+				}
+				harness += "return @{tag_name=" + quote(tag) + "; draft=$false; prerelease=" + prerelease + "}"
 			}
 			harness += " }\nfunction Invoke-WebRequest { param([switch]$UseBasicParsing,$Uri,$OutFile,$TimeoutSec)\n"
 			harness += "if ($Uri.EndsWith('/SHA256SUMS')) { Copy-Item -LiteralPath " + quote(checksums) + " -Destination $OutFile } else { Copy-Item -LiteralPath " + quote(archive) + " -Destination $OutFile }\n}\n"
 			harness += "& " + quote(script) + " -InstallDir " + quote(dest)
+			if version != "" {
+				harness += " -Version " + quote(version)
+			}
 			path := filepath.Join(dir, "check.ps1")
 			if err := os.WriteFile(path, []byte(harness), 0600); err != nil {
 				t.Fatal(err)
@@ -215,9 +254,9 @@ func TestWindowsInstaller(t *testing.T) {
 				t.Fatal(err)
 			}
 			cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
-			cmd.Env = append(os.Environ(), "TEMP="+temp, "TMP="+temp)
+			cmd.Env = append(os.Environ(), "TEMP="+temp, "TMP="+temp, "DEPLEXO_VERSION=")
 			out, err := cmd.CombinedOutput()
-			success := scenario == "install" || scenario == "update"
+			success := scenario == "install" || scenario == "update" || scenario == "beta" || scenario == "pinned-stable"
 			if success && err != nil || !success && err == nil {
 				t.Fatalf("unexpected result: %v %s", err, out)
 			}
