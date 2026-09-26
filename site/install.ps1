@@ -16,21 +16,14 @@ $repo = 'https://github.com/Deplexo/cli'
 $number = '(0|[1-9][0-9]*)'
 $identifier = "($number|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
 $versionPattern = "\Av$number\.$number\.$number(-$identifier(\.$identifier)*)?\z"
-$releaseUri = 'https://api.github.com/repos/Deplexo/cli/releases/latest'
 if ($Version) {
     if ($Version -cnotmatch $versionPattern) { throw 'Version must be a release tag such as v0.1.0 or v0.1.0-beta.1.' }
-    $releaseUri = "https://api.github.com/repos/Deplexo/cli/releases/tags/$Version"
+    $tag = $Version
 }
-try {
-    $release = Invoke-RestMethod -Uri $releaseUri -TimeoutSec 30
-}
-catch { throw 'The requested release is unavailable, or GitHub could not be reached. Check https://github.com/Deplexo/cli/releases.' }
-$tag = $release.tag_name
-if ($tag -cnotmatch $versionPattern -or $release.draft -or ($Version -and $tag -cne $Version)) {
-    throw 'GitHub did not return the requested release.'
-}
-if (-not $Version -and ($release.prerelease -or $tag.Contains('-'))) {
-    throw 'GitHub did not return a stable release. Use -Version to select a prerelease.'
+else {
+    try { $tag = (Invoke-RestMethod -Uri 'https://cli.deplexo.com/latest-version' -TimeoutSec 30).TrimEnd("`r", "`n") }
+    catch { throw 'Could not find the current release. Check https://github.com/Deplexo/cli/releases.' }
+    if ($tag -cnotmatch "\Av$number\.$number\.$number(-beta\.$number)?\z") { throw 'The release version is invalid.' }
 }
 $work = Join-Path ([IO.Path]::GetTempPath()) ('deplexo-install-' + [guid]::NewGuid())
 $stage = $null

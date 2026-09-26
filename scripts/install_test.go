@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -12,18 +13,21 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestShellInstaller(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell installer is for Linux and macOS")
 	}
-	for _, scenario := range []string{"install", "update", "beta", "pinned-stable", "invalid-pinned", "newline-pinned", "prerelease-latest", "corrupt", "missing-checksum", "duplicate-checksum", "no-release", "invalid-version", "unsupported-cpu", "bad-binary", "destination-directory"} {
+	for _, scenario := range []string{"install", "update", "beta", "latest-beta", "pinned-stable", "invalid-pinned", "newline-pinned", "rc-latest", "corrupt", "missing-checksum", "duplicate-checksum", "no-release", "invalid-version", "unsupported-cpu", "bad-binary", "destination-directory", "colon-directory", "newline-directory", "control-directory"} {
 		t.Run(scenario, func(t *testing.T) {
 			tag, version := "v0.1.0", ""
 			switch scenario {
 			case "beta":
 				tag, version = "v0.1.0-beta.1", "v0.1.0-beta.1"
+			case "latest-beta":
+				tag = "v0.1.0-beta.2"
 			case "pinned-stable":
 				version = tag
 			case "invalid-pinned":
@@ -34,6 +38,14 @@ func TestShellInstaller(t *testing.T) {
 			root := t.TempDir()
 			bin := filepath.Join(root, "commands")
 			dest := filepath.Join(root, "installed bin")
+			switch scenario {
+			case "colon-directory":
+				dest += ":other"
+			case "newline-directory":
+				dest += "\nother"
+			case "control-directory":
+				dest += "\tother"
+			}
 			for _, dir := range []string{bin, dest} {
 				if err := os.Mkdir(dir, 0700); err != nil {
 					t.Fatal(err)
@@ -92,21 +104,21 @@ func TestShellInstaller(t *testing.T) {
 			write(filepath.Join(root, "checksums"), checksum)
 			write(filepath.Join(bin, "uname"), "#!/bin/sh\nif [ \"$1\" = '-s' ]; then echo Linux; elif [ \"$SCENARIO\" = 'unsupported-cpu' ]; then echo mips; else echo aarch64; fi\n")
 			write(filepath.Join(bin, "curl"), `#!/bin/sh
-output=; url=; effective=false
+output=; url=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output) output=$2; shift ;;
-    --write-out) effective=true; shift ;;
     https://*) url=$1 ;;
   esac
   shift
 done
-if [ "$effective" = true ]; then
+if [ "$url" = "https://cli.deplexo.com/latest-version" ]; then
   [ "$SCENARIO" != no-release ] || exit 22
   [ "$SCENARIO" != beta ] && [ "$SCENARIO" != pinned-stable ] || exit 23
-  if [ "$SCENARIO" = invalid-version ]; then echo https://github.com/Deplexo/cli/releases/tag/v01.0.0
-  elif [ "$SCENARIO" = prerelease-latest ]; then echo https://github.com/Deplexo/cli/releases/tag/v0.1.0-beta.1
-  else echo https://github.com/Deplexo/cli/releases/tag/v0.1.0; fi
+  if [ "$SCENARIO" = invalid-version ]; then echo v01.0.0
+  elif [ "$SCENARIO" = rc-latest ]; then echo v0.1.0-rc.1
+  elif [ "$SCENARIO" = latest-beta ]; then echo v0.1.0-beta.2
+  else echo v0.1.0; fi
 elif [ "${url##*/}" = SHA256SUMS ]; then
   [ "$url" = "https://github.com/Deplexo/cli/releases/download/$EXPECTED_TAG/SHA256SUMS" ] || exit 24
   cp "$FIXTURE/checksums" "$output"
@@ -118,7 +130,7 @@ fi
 			cmd := exec.Command("sh", "../site/install.sh")
 			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "DEPLEXO_INSTALL_DIR="+dest, "DEPLEXO_VERSION="+version, "EXPECTED_TAG="+tag, "TMPDIR="+root, "FIXTURE="+root, "SCENARIO="+scenario)
 			out, err := cmd.CombinedOutput()
-			success := scenario == "install" || scenario == "update" || scenario == "beta" || scenario == "pinned-stable"
+			success := scenario == "install" || scenario == "update" || scenario == "beta" || scenario == "latest-beta" || scenario == "pinned-stable"
 			if success && err != nil || !success && err == nil {
 				t.Fatalf("unexpected result %v: %s", err, out)
 			}
@@ -139,6 +151,161 @@ fi
 				left, _ := filepath.Glob(pattern)
 				if len(left) != 0 {
 					t.Fatalf("temporary files left: %v", left)
+				}
+			}
+		})
+	}
+}
+
+func TestShellInstallerPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell installer is for Linux and macOS")
+	}
+	data, err := os.ReadFile("../site/install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Run the actual onboarding function without downloading a second fixture.
+	definitions, _, ok := strings.Cut(string(data), "\n# A complete function")
+	if !ok {
+		t.Fatal("installer entrypoint marker missing")
+	}
+	for _, scenario := range []string{"zsh-yes", "zsh-repeat", "zsh-decline", "zsh-default", "zsh-no-tty", "zsh-optout", "zsh-ci", "zsh-symlink", "zsh-directory", "zsh-missing-parent", "zsh-zdotdir", "bash-linux", "bash-mac", "bash-login", "bash-profile", "fish", "unknown", "already-on-path", "quoted-path"} {
+		t.Run(scenario, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			destination := filepath.Join(root, "installed bin")
+			if scenario == "quoted-path" {
+				destination += "'\"$`!\\literal"
+			}
+			shell, targetOS, config := "/bin/zsh", "linux", filepath.Join(root, ".zshrc")
+			extra := []string{}
+			switch scenario {
+			case "zsh-zdotdir", "zsh-missing-parent":
+				dir := filepath.Join(root, "zsh config")
+				if scenario == "zsh-zdotdir" {
+					if err := os.Mkdir(dir, 0700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				extra = append(extra, "ZDOTDIR="+dir)
+				config = filepath.Join(dir, ".zshrc")
+			case "bash-linux":
+				shell, config = "/bin/bash", filepath.Join(root, ".bashrc")
+			case "bash-mac", "bash-login", "bash-profile":
+				shell, targetOS, config = "/bin/bash", "darwin", filepath.Join(root, ".bash_profile")
+				if scenario == "bash-login" {
+					config = filepath.Join(root, ".bash_login")
+				}
+				if scenario == "bash-profile" {
+					config = filepath.Join(root, ".profile")
+				}
+			case "fish":
+				shell = "/bin/fish"
+			case "unknown":
+				shell = ""
+			case "zsh-optout":
+				extra = append(extra, "DEPLEXO_NO_MODIFY_PATH=1")
+			case "zsh-ci":
+				extra = append(extra, "CI=true")
+			}
+			initial := "# Existing user configuration\n"
+			if scenario == "bash-login" || scenario == "bash-profile" || scenario == "zsh-repeat" {
+				if err := os.WriteFile(config, []byte(initial), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "zsh-directory" {
+				if err := os.Mkdir(config, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			linked := filepath.Join(root, "linked-config")
+			if scenario == "zsh-symlink" {
+				if err := os.WriteFile(linked, []byte(initial), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(linked, config); err != nil {
+					t.Fatal(err)
+				}
+			}
+			path := os.Getenv("PATH")
+			if scenario == "already-on-path" {
+				path = destination + ":" + path
+			}
+			body := definitions + "\ndestination=$TEST_DESTINATION\ntarget_os=$TEST_OS\nSHELL=$TEST_SHELL\nsetup_path\n"
+			if scenario == "zsh-repeat" {
+				body += "setup_path\n"
+			}
+			scriptPath := filepath.Join(root, "path-test.sh")
+			if err := os.WriteFile(scriptPath, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			var cmd *exec.Cmd
+			if scenario == "zsh-no-tty" {
+				cmd = exec.CommandContext(ctx, "sh", scriptPath)
+			} else {
+				if _, err := exec.LookPath("script"); err != nil {
+					t.Skip("PTY regression needs the script utility")
+				}
+				if runtime.GOOS == "darwin" {
+					cmd = exec.CommandContext(ctx, "script", "-q", "/dev/null", "sh", scriptPath)
+				} else {
+					cmd = exec.CommandContext(ctx, "script", "-q", "-e", "-c", "cat '"+strings.ReplaceAll(scriptPath, "'", "'\\''")+"' | sh", "/dev/null")
+				}
+			}
+			cmd.Env = append(os.Environ(), "HOME="+root, "SHELL=/bin/sh", "TEST_SHELL="+shell, "ZDOTDIR="+root, "CI=", "DEPLEXO_NO_MODIFY_PATH=", "TEST_DESTINATION="+destination, "TEST_OS="+targetOS, "PATH="+path)
+			cmd.Env = append(cmd.Env, extra...)
+			answer := "y\n"
+			if scenario == "zsh-decline" {
+				answer = "n\n"
+			}
+			if scenario == "zsh-default" {
+				answer = "\n"
+			}
+			cmd.Stdin = strings.NewReader(answer)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("onboarding failed: %v: %s", err, out)
+			}
+			modified := scenario == "zsh-yes" || scenario == "zsh-repeat" || scenario == "zsh-zdotdir" || strings.HasPrefix(scenario, "bash-") || scenario == "quoted-path"
+			contents, readErr := os.ReadFile(config)
+			if modified {
+				if readErr != nil {
+					t.Fatalf("expected shell config: %v: %s", readErr, out)
+				}
+				if strings.Count(string(contents), "# Deplexo CLI") != 1 {
+					t.Fatalf("missing or duplicated entry: %s", contents)
+				}
+				if scenario == "zsh-repeat" && !strings.HasPrefix(string(contents), initial) {
+					t.Fatal("existing configuration changed")
+				}
+				check := exec.Command("sh", "-c", ". \"$1\"; printf '%s' \"$PATH\"", "sh", config)
+				check.Env = append(os.Environ(), "PATH="+path)
+				got, err := check.CombinedOutput()
+				if err != nil || string(got) != destination+":"+path {
+					t.Fatalf("unsafe or incorrect PATH setting: %q %v", got, err)
+				}
+			} else if readErr == nil && string(contents) != initial {
+				t.Fatalf("configuration changed without consent: %s", contents)
+			}
+			if scenario == "zsh-symlink" {
+				got, err := os.ReadFile(linked)
+				if err != nil || string(got) != initial {
+					t.Fatal("symlink target changed")
+				}
+			}
+			if scenario != "already-on-path" && !strings.Contains(string(out), "auth login") {
+				t.Fatalf("missing full-path login instructions: %s", out)
+			}
+			if scenario == "fish" && !strings.Contains(string(out), "fish_add_path -- '") {
+				t.Fatalf("missing fish activation: %s", out)
+			}
+			for _, skipped := range []string{"zsh-ci", "zsh-no-tty", "zsh-optout"} {
+				if scenario == skipped && strings.Contains(string(out), "[y/N]") {
+					t.Fatalf("unexpected prompt: %s", out)
 				}
 			}
 		})
@@ -187,12 +354,14 @@ func TestWindowsInstaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-	for _, scenario := range []string{"install", "update", "beta", "pinned-stable", "invalid-pinned", "prerelease-latest", "wrong-tag", "corrupt", "missing-checksum", "no-release"} {
+	for _, scenario := range []string{"install", "update", "beta", "latest-beta", "pinned-stable", "invalid-pinned", "rc-latest", "wrong-tag", "corrupt", "missing-checksum", "no-release"} {
 		t.Run(scenario, func(t *testing.T) {
 			tag, version := "v0.1.0", ""
 			switch scenario {
 			case "beta":
 				tag, version = "v0.1.0-beta.1", "v0.1.0-beta.1"
+			case "latest-beta":
+				tag = "v0.1.0-beta.2"
 			case "pinned-stable":
 				version = tag
 			case "invalid-pinned":
@@ -225,19 +394,15 @@ func TestWindowsInstaller(t *testing.T) {
 			}
 			harness := "$ErrorActionPreference = 'Stop'\n"
 			harness += "function Invoke-RestMethod { param($Uri, $TimeoutSec) "
-			apiPath := "latest"
+			harness += "if ($Uri -cne 'https://cli.deplexo.com/latest-version') { throw 'wrong release endpoint' }; "
 			if version != "" {
-				apiPath = "tags/" + version
-			}
-			harness += "if ($Uri -cne " + quote("https://api.github.com/repos/Deplexo/cli/releases/"+apiPath) + ") { throw 'wrong release endpoint' }; "
-			if scenario == "no-release" {
+				harness += "throw 'pinned install looked up latest'"
+			} else if scenario == "no-release" {
 				harness += "throw 'no release'"
+			} else if scenario == "rc-latest" {
+				harness += "return 'v0.1.0-rc.1'"
 			} else {
-				prerelease := "$false"
-				if scenario == "beta" || scenario == "prerelease-latest" {
-					prerelease = "$true"
-				}
-				harness += "return @{tag_name=" + quote(tag) + "; draft=$false; prerelease=" + prerelease + "}"
+				harness += "return " + quote(tag)
 			}
 			harness += " }\nfunction Invoke-WebRequest { param([switch]$UseBasicParsing,$Uri,$OutFile,$TimeoutSec)\n"
 			harness += "if ($Uri.EndsWith('/SHA256SUMS')) { Copy-Item -LiteralPath " + quote(checksums) + " -Destination $OutFile } else { Copy-Item -LiteralPath " + quote(archive) + " -Destination $OutFile }\n}\n"
@@ -256,7 +421,7 @@ func TestWindowsInstaller(t *testing.T) {
 			cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
 			cmd.Env = append(os.Environ(), "TEMP="+temp, "TMP="+temp, "DEPLEXO_VERSION=")
 			out, err := cmd.CombinedOutput()
-			success := scenario == "install" || scenario == "update" || scenario == "beta" || scenario == "pinned-stable"
+			success := scenario == "install" || scenario == "update" || scenario == "beta" || scenario == "latest-beta" || scenario == "pinned-stable"
 			if success && err != nil || !success && err == nil {
 				t.Fatalf("unexpected result: %v %s", err, out)
 			}

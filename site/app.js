@@ -34,15 +34,11 @@ function selectOS(os) {
     .forEach((button) =>
       button.setAttribute("aria-pressed", String(button.dataset.os === os)),
     );
-  code.textContent = betaVersion
-    ? os === "windows"
-      ? `${command.code} -Version '${betaVersion}'`
-      : command.code.replace("| sh", `| DEPLEXO_VERSION=${betaVersion} sh`)
-    : command.code;
+  code.textContent = command.code;
   document.querySelector("#shell-label").textContent = command.shell;
   document.querySelector("#install-detail").textContent = betaVersion
-    ? `Installs beta ${betaVersion} to ${command.destination}. Change the pinned version to update.`
-    : `Installs the latest stable release to ${command.destination}. Run it again to update.`;
+    ? `Installs the current release (${betaVersion}) to ${command.destination}. Run it again to update.`
+    : `Installs the current release to ${command.destination}. Run it again to update.`;
   document.querySelector("#script-link").href = command.script;
   copy.textContent = "Copy";
   status.textContent = "";
@@ -80,52 +76,31 @@ copy.addEventListener("click", async () => {
 
 const releaseStatus = document.querySelector("#release-status");
 async function loadRelease() {
-  const response = await fetch(
-    "https://api.github.com/repos/Deplexo/cli/releases/latest",
-    { signal: AbortSignal.timeout(6000) },
-  );
-  if (response.ok) {
-    const release = await response.json();
-    if (
-      /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(
-        release.tag_name,
-      ) &&
-      !release.draft &&
-      !release.prerelease
-    ) {
-      releaseStatus.textContent = `${release.tag_name} · Latest release ↗`;
-    }
+  const response = await fetch("./latest-version", {
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!response.ok) return;
+  const tag = (await response.text()).trim();
+  if (
+    !/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.(0|[1-9][0-9]*))?$/.test(
+      tag,
+    )
+  )
     return;
+  const beta = tag.includes("-beta.");
+  releaseStatus.textContent = `${tag} · ${beta ? "Beta release" : "Latest release"} ↗`;
+  releaseStatus.href = `https://github.com/Deplexo/cli/releases/tag/${tag}`;
+  if (beta) {
+    betaVersion = tag;
+    document.querySelector("#install-title").textContent = "Install the beta";
+    document
+      .querySelector(".install-note")
+      .prepend(
+        "This is a beta. Native testing is incomplete; check the release notes for your platform. ",
+      );
+    selectOS(selectedOS);
   }
-  if (response.status !== 404) return;
-  releaseStatus.textContent = "No stable release published yet ↗";
-  const betas = await fetch(
-    "https://api.github.com/repos/Deplexo/cli/releases?per_page=20",
-    { signal: AbortSignal.timeout(6000) },
-  );
-  if (!betas.ok) return;
-  const releases = await betas.json();
-  if (!Array.isArray(releases)) return;
-  const beta = releases.find(
-    (release) =>
-      !release.draft &&
-      release.prerelease &&
-      /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-beta\.(0|[1-9][0-9]*)$/.test(
-        release.tag_name,
-      ),
-  );
-  if (!beta) return;
-  betaVersion = beta.tag_name;
-  releaseStatus.textContent = `${betaVersion} · Beta release ↗`;
-  releaseStatus.href = `https://github.com/Deplexo/cli/releases/tag/${betaVersion}`;
-  document.querySelector("#install-title").textContent = "Install the beta";
-  document
-    .querySelector(".install-note")
-    .prepend(
-      "This is a beta. Native testing is incomplete; check the release notes for your platform. ",
-    );
-  selectOS(selectedOS);
 }
 loadRelease().catch(() => {
-  /* Release links remain usable when the API is unavailable. */
+  /* Release links remain usable when the version lookup is unavailable. */
 });

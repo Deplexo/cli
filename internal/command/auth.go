@@ -89,41 +89,48 @@ func (a *application) pair(ctx context.Context, device api.Device, noBrowser boo
 }
 
 func confirmBrowser(ctx context.Context, input io.Reader) (bool, error) {
-	if err := ctx.Err(); err != nil {
+	line, err := readAnswer(ctx, input)
+	if errors.Is(err, io.EOF) {
+		return false, nil
+	}
+	if err != nil {
 		return false, err
+	}
+	if line == "" {
+		return true, nil
+	}
+	if strings.EqualFold(line, "n") {
+		return false, nil
+	}
+	return false, output.Usage("press Enter to open the browser, or use --no-browser to sign in manually")
+}
+
+func readAnswer(ctx context.Context, input io.Reader) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	type response struct {
 		line string
 		err  error
 	}
 	answer := make(chan response, 1)
-	// A terminal read cannot be cancelled portably without closing the caller's
-	// stdin. The process exits on cancellation; the buffered send cannot block.
+	// A terminal read cannot be cancelled portably without closing stdin.
+	// The process exits on cancellation; the buffered send cannot block.
 	go func() {
 		line, err := bufio.NewReader(io.LimitReader(input, 1024)).ReadString('\n')
 		answer <- response{line, err}
 	}()
 	select {
 	case <-ctx.Done():
-		return false, ctx.Err()
+		return "", ctx.Err()
 	case result := <-answer:
 		if err := ctx.Err(); err != nil {
-			return false, err
-		}
-		if errors.Is(result.err, io.EOF) {
-			return false, nil
+			return "", err
 		}
 		if result.err != nil {
-			return false, errors.New("could not read your answer; use --no-browser to sign in manually")
+			return "", result.err
 		}
-		line := strings.TrimSuffix(strings.TrimSuffix(result.line, "\n"), "\r")
-		if line == "" {
-			return true, nil
-		}
-		if strings.EqualFold(line, "n") {
-			return false, nil
-		}
-		return false, output.Usage("press Enter to open the browser, or use --no-browser to sign in manually")
+		return strings.TrimSuffix(strings.TrimSuffix(result.line, "\n"), "\r"), nil
 	}
 }
 

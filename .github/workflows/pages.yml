@@ -3,8 +3,19 @@ name: CLI website
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths:
+      [
+        "site/**",
+        "scripts/site.go",
+        "internal/update/**",
+        "internal/version/**",
+        "go.mod",
+        "go.sum",
+        ".github/workflows/pages.yml",
+      ]
   workflow_dispatch:
+  release:
+    types: [published, edited, deleted, unpublished]
 
 permissions:
   contents: read
@@ -14,7 +25,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  refresh:
+    if: github.event_name == 'release'
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Refresh Pages from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run pages.yml --ref main
   deploy:
+    if: github.event_name != 'release' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Linux]
     timeout-minutes: 10
     environment:
@@ -27,7 +51,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Select the published release for installers
+        run: go run scripts/site.go
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: site

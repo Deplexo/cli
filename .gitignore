@@ -2,6 +2,7 @@
 /dist/
 /coverage/
 /coverage.out
+/site/latest-version
 .env
 .env.*
 !.env.example

@@ -45,3 +45,19 @@ func TestBuildIdentity(t *testing.T) {
 		t.Fatal("linker identity overwritten")
 	}
 }
+
+func TestSemVerUpdatePrecedence(t *testing.T) {
+	ordered := []string{"v1.0.0-alpha", "v1.0.0-alpha.1", "v1.0.0-alpha.beta", "v1.0.0-beta", "v1.0.0-beta.2", "v1.0.0-beta.11", "v1.0.0-rc.1", "v1.0.0", "v1.0.1", "v2.0.0", "v999999999999999999999.0.0"}
+	for i, current := range ordered {
+		for j, candidate := range ordered {
+			if Newer(candidate, current) != (j > i) {
+				t.Errorf("precedence %s > %s", candidate, current)
+			}
+		}
+	}
+	for _, invalid := range []string{"dev", "v01.0.0", "v1.0.0-beta.01", "v1.0.0\n"} {
+		if Newer(invalid, "v0.0.1") || Newer("v1.0.0", invalid) {
+			t.Errorf("accepted invalid tag %q", invalid)
+		}
+	}
+}

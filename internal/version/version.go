@@ -30,6 +30,51 @@ func ValidTag(tag string) bool {
 	return strings.HasPrefix(tag, "v") && Valid(tag[1:]) && !strings.Contains(tag, "+")
 }
 
+func BetaTag(tag string) bool {
+	_, pre, _ := strings.Cut(tag, "-")
+	parts := strings.Split(pre, ".")
+	return ValidTag(tag) && len(parts) == 2 && parts[0] == "beta" && parts[1] != "" && strings.Trim(parts[1], "0123456789") == ""
+}
+
+// Newer compares release tags by SemVer precedence without integer overflow.
+func Newer(candidate, current string) bool {
+	if !ValidTag(candidate) || !ValidTag(current) {
+		return false
+	}
+	a, ap, _ := strings.Cut(candidate[1:], "-")
+	b, bp, _ := strings.Cut(current[1:], "-")
+	numeric := func(a, b string) int {
+		if len(a) != len(b) {
+			return len(a) - len(b)
+		}
+		return strings.Compare(a, b)
+	}
+	aa, bb := strings.Split(a, "."), strings.Split(b, ".")
+	for i := range aa {
+		if cmp := numeric(aa[i], bb[i]); cmp != 0 {
+			return cmp > 0
+		}
+	}
+	if ap == "" || bp == "" {
+		return ap == "" && bp != ""
+	}
+	aa, bb = strings.Split(ap, "."), strings.Split(bp, ".")
+	for i := 0; i < min(len(aa), len(bb)); i++ {
+		an, bn := strings.Trim(aa[i], "0123456789") == "", strings.Trim(bb[i], "0123456789") == ""
+		if an != bn {
+			return !an
+		}
+		cmp := strings.Compare(aa[i], bb[i])
+		if an {
+			cmp = numeric(aa[i], bb[i])
+		}
+		if cmp != 0 {
+			return cmp > 0
+		}
+	}
+	return len(aa) > len(bb)
+}
+
 func Current(value, commit string) (string, string) {
 	info, _ := debug.ReadBuildInfo()
 	return fromBuild(value, commit, info)

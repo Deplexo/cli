@@ -24,15 +24,18 @@ import (
 )
 
 type Options struct {
-	In              io.Reader
-	Out, Err        io.Writer
-	Version, Commit string
-	LookupEnv       func(string) (string, bool)
-	ConfigDir       func() (string, error)
-	WorkingDir      func() (string, error)
-	Transport       http.RoundTripper
-	OpenBrowser     func(context.Context, string) error
-	IsTerminal      func() bool
+	In               io.Reader
+	Out, Err         io.Writer
+	Version, Commit  string
+	LookupEnv        func(string) (string, bool)
+	ConfigDir        func() (string, error)
+	WorkingDir       func() (string, error)
+	Transport        http.RoundTripper
+	UpdateTransport  http.RoundTripper
+	Executable       func() (string, error)
+	OpenBrowser      func(context.Context, string) error
+	IsTerminal       func() bool
+	IsOutputTerminal func(io.Writer) bool
 }
 
 type application struct {
@@ -46,12 +49,18 @@ type application struct {
 func Execute(ctx context.Context, options Options, args []string) int {
 	root, app := newRoot(options)
 	root.SetArgs(args)
-	err := root.ExecuteContext(ctx)
+	command, err := root.ExecuteContextC(ctx)
 	if err != nil {
 		if !app.started {
 			err = output.Usage(err.Error())
 		}
 		app.printer(app.options.Err).Report(err, app.json)
+	} else {
+		app.notifyUpdate(ctx, command)
+		if ctx.Err() != nil {
+			app.printer(app.options.Err).Report(ctx.Err(), app.json)
+			return output.ExitCode(ctx.Err())
+		}
 	}
 	return output.ExitCode(err)
 }
@@ -75,6 +84,9 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	if options.WorkingDir == nil {
 		options.WorkingDir = os.Getwd
 	}
+	if options.Executable == nil {
+		options.Executable = os.Executable
+	}
 	if options.OpenBrowser == nil {
 		options.OpenBrowser = openBrowser
 	}
@@ -83,6 +95,9 @@ func newRoot(options Options) (*cobra.Command, *application) {
 			file, ok := options.In.(*os.File)
 			return ok && term.IsTerminal(int(file.Fd()))
 		}
+	}
+	if options.IsOutputTerminal == nil {
+		options.IsOutputTerminal = func(w io.Writer) bool { file, ok := w.(*os.File); return ok && term.IsTerminal(int(file.Fd())) }
 	}
 	if options.Version == "" {
 		options.Version = "dev"
@@ -125,7 +140,7 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	root.AddGroup(&cobra.Group{ID: "apps", Title: "Apps and deployments:"}, &cobra.Group{ID: "account", Title: "Account:"}, &cobra.Group{ID: "other", Title: "Other commands:"})
 	root.SetHelpCommandGroupID("other")
 	root.SetCompletionCommandGroupID("other")
-	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.deployCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand())
+	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.deployCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand(), a.upgradeCommand())
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the CLI version", Args: noArgs,
 		RunE: func(*cobra.Command, []string) error {
 			result := struct {
@@ -148,7 +163,7 @@ func newRoot(options Options) (*cobra.Command, *application) {
 		switch command.Name() {
 		case "auth", "whoami":
 			command.GroupID = "account"
-		case "version":
+		case "version", "upgrade":
 			command.GroupID = "other"
 		default:
 			command.GroupID = "apps"
