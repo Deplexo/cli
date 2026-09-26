@@ -11,7 +11,7 @@ import (
 )
 
 func (a *application) appsCommand() *cobra.Command {
-	group := &cobra.Command{Use: "apps", Short: "Inspect, create, start, stop, or delete an app", Args: noArgs}
+	group := &cobra.Command{Use: "apps", Short: "List, inspect, create, start, stop, or delete apps", Args: noArgs}
 	var appID string
 	get := &cobra.Command{Use: "get", Short: "Show app details", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		id, err := a.selectedApp(appID)
@@ -30,10 +30,14 @@ func (a *application) appsCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return a.message(result, result.App.Name+" ("+result.App.ID+"): "+result.App.Status)
+		app := result.App
+		return a.details(result, app.Name, [][2]string{
+			{"App", app.ID}, {"Status", app.Status}, {"Subdomain", app.Subdomain},
+			{"Repository", app.RepoURL}, {"Framework", app.Framework}, {"Root directory", app.RootDir},
+		})
 	}}
 	get.Flags().StringVar(&appID, "app", "", "App UUID; defaults to .deplexo.json")
-	group.AddCommand(get, a.createCommand())
+	group.AddCommand(get, a.listAppsCommand(), a.createCommand())
 	for _, action := range []struct {
 		name, short, scope string
 		confirm            bool
@@ -72,7 +76,7 @@ func (a *application) appsCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.message(result, "App "+id+": "+result.Status)
+			return a.details(result, "App operation", [][2]string{{"App", id}, {"Status", result.Status}})
 		}}
 		command.Flags().StringVar(&idFlag, "app", "", "App UUID; defaults to .deplexo.json")
 		if action.confirm {
@@ -105,12 +109,73 @@ func (a *application) createCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return a.message(result, "Created app "+result.AppID+"; deployment "+result.DeploymentID+" is "+result.Status+".")
+		return a.details(result, "Created app", [][2]string{
+			{"App", result.AppID}, {"Deployment", result.DeploymentID}, {"Status", result.Status},
+		})
 	}}
 	command.Flags().StringVar(&request.Name, "name", "", "Name for the new app")
 	command.Flags().StringVar(&request.RepoURL, "repo", "", "HTTPS URL of the Git repository")
 	command.Flags().StringVar(&request.Framework, "framework", "", "Build framework; omit to detect it automatically")
 	command.Flags().StringVar(&request.RootDir, "root-dir", "", "Source subdirectory to build")
+	return command
+}
+
+func (a *application) listAppsCommand() *cobra.Command {
+	return &cobra.Command{Use: "list", Short: "List apps available to your account", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		manager, err := a.manager()
+		if err != nil {
+			return err
+		}
+		token, err := manager.Token(cmd.Context(), "app:read")
+		if err != nil {
+			return err
+		}
+		result, err := manager.API.Apps(cmd.Context(), token)
+		if err != nil {
+			return err
+		}
+		if a.json {
+			return output.JSON(a.options.Out, result)
+		}
+		rows := make([][]string, 0, len(result.Apps))
+		for _, app := range result.Apps {
+			rows = append(rows, []string{app.Name, app.Status, app.ID})
+		}
+		return a.printer(a.options.Out).Table([]string{"NAME", "STATUS", "APP ID"}, rows, "No apps found. Create one with deplexo apps create --name <name> --repo <url>.")
+	}}
+}
+
+func (a *application) deployCommand() *cobra.Command {
+	var appFlag string
+	command := &cobra.Command{
+		Use: "deploy", Short: "Rebuild and deploy an existing app from its recorded source",
+		Long:    "Rebuild and deploy an existing app from its recorded source. Git apps use the latest source.\nThis starts a build, not a process-only restart. Local directories and ZIP files are not accepted.\nThe command returns when the deployment is queued; it does not wait for the build to finish.",
+		Example: "  deplexo deploy --app 11111111-1111-4111-8111-111111111111\n  deplexo deploy  # Use the app linked to this directory",
+		Args:    noArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			id, err := a.selectedApp(appFlag)
+			if err != nil {
+				return err
+			}
+			manager, err := a.manager()
+			if err != nil {
+				return err
+			}
+			token, err := manager.Token(cmd.Context(), "app:restart")
+			if err != nil {
+				return err
+			}
+			result, err := manager.API.Deploy(cmd.Context(), token, id)
+			if err != nil {
+				return err
+			}
+			return a.details(result, "Deployment requested", [][2]string{
+				{"App", result.AppID}, {"Deployment", result.DeploymentID}, {"Status", result.Status},
+				{"Build logs", "deplexo deployments logs " + result.DeploymentID},
+			})
+		},
+	}
+	command.Flags().StringVar(&appFlag, "app", "", "App UUID; defaults to .deplexo.json")
 	return command
 }
 

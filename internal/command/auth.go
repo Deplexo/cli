@@ -62,7 +62,7 @@ func (a *application) authCommand() *cobra.Command {
 }
 
 func (a *application) pair(ctx context.Context, device api.Device, noBrowser bool) error {
-	if _, err := fmt.Fprintf(a.options.Err, "Open %s and enter %s.\n", output.Safe(device.VerificationURI), output.Safe(device.UserCode)); err != nil {
+	if err := a.printer(a.options.Err).Fields("Sign in to Deplexo", [][2]string{{"Open", device.VerificationURI}, {"Pairing code", device.UserCode}}); err != nil {
 		return err
 	}
 	if !noBrowser && !a.noInput && a.options.IsTerminal() {
@@ -142,6 +142,6 @@ func (a *application) whoamiCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.message(profile, profile.Email+" ("+profile.ID+")")
+			return a.details(profile, "Signed-in account", [][2]string{{"Email", profile.Email}, {"Account", profile.ID}})
 		}}
 }

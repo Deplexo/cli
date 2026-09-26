@@ -1,6 +1,6 @@
 # Deplexo CLI
 
-`deplexo` lets you sign in to Deplexo, create apps from Git repositories, control apps, and read deployment history and logs. You can link a local directory to an app so you do not need to pass its UUID each time. The CLI is written in Go and uses the public API.
+`deplexo` lets you sign in to Deplexo, list apps, create apps from Git repositories, rebuild existing apps, and read deployment history and logs. You can link a local directory to an app so you do not need to pass its UUID each time. The CLI is written in Go and uses the public API.
 
 See the [Deplexo docs](https://docs.deplexo.com) for platform documentation.
 
@@ -8,16 +8,16 @@ The CLI is under development. Builds target Linux, macOS, and Windows on amd64 a
 
 ## Install
 
-Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The first download is `v0.1.0-beta.1`; native testing is incomplete, so check the release notes for your platform. To install the beta on Linux or macOS:
+Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The current beta is `v0.1.0-beta.2`; native testing is incomplete, so check the release notes for your platform. To install the beta on Linux or macOS:
 
 ```sh
-curl -fsSL https://cli.deplexo.com/install.sh | DEPLEXO_VERSION=v0.1.0-beta.1 sh
+curl -fsSL https://cli.deplexo.com/install.sh | DEPLEXO_VERSION=v0.1.0-beta.2 sh
 ```
 
 On Windows, run this in PowerShell:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-RestMethod -ErrorAction Stop 'https://cli.deplexo.com/install.ps1'))) -Version 'v0.1.0-beta.1'
+& ([scriptblock]::Create((Invoke-RestMethod -ErrorAction Stop 'https://cli.deplexo.com/install.ps1'))) -Version 'v0.1.0-beta.2'
 ```
 
 The installers download the selected version for your OS and CPU, verify its SHA-256 checksum, and install to `~/.local/bin` or `%LOCALAPPDATA%\Deplexo\bin`. Add that directory to your PATH if needed. Choose a newer version to update a pinned installation. Set `DEPLEXO_INSTALL_DIR` on Linux/macOS or pass `-InstallDir` to the downloaded PowerShell script to use another directory. No administrator access is needed for the default destination.
@@ -46,7 +46,7 @@ deplexo auth logout
 
 Sign-in prints the verification URL and pairing code, then asks you to press Enter before opening your browser. Type `n` to continue manually. Use `--no-browser` to skip that prompt. `--no-input` and redirected input also skip prompts and browser opening. Ordinary commands never start sign-in.
 
-Sign-in requests `profile:read app:read app:deploy logs:read` by default. Use `--read-only` for read access. `--scopes` replaces the defaults with the scopes you specify and must include `profile:read` for a stored sign-in. To start, stop, or delete apps, also request `app:start`, `app:stop`, or `app:delete` as needed.
+Sign-in requests `profile:read app:read app:deploy app:restart logs:read` by default. Use `--read-only` for read access. `--scopes` replaces the defaults with the scopes you specify and must include `profile:read` for a stored sign-in. To start, stop, or delete apps, also request `app:start`, `app:stop`, or `app:delete` as needed.
 
 The CLI stores credentials in Linux Secret Service, macOS Keychain, or Windows Credential Manager. Unlock your keyring before running a command; the Linux adapter will not open an unlock prompt. macOS Keychain can request desktop approval, so `--no-input` on macOS requires `DEPLEXO_TOKEN` or `--insecure-storage`.
 
@@ -57,9 +57,11 @@ For automation, [create an API key](https://deplexo.com/api-keys) with the permi
 ## Apps and logs
 
 ```sh
+deplexo apps list
 deplexo apps create --name example --repo https://github.com/example/app
 deplexo link --app 11111111-1111-4111-8111-111111111111
 deplexo apps get
+deplexo deploy
 deplexo deployments list
 deplexo deployments logs 22222222-2222-4222-8222-222222222222
 deplexo logs --follow
@@ -70,6 +72,10 @@ deplexo unlink
 ```
 
 Commands use the app UUID from `--app`, or from `.deplexo.json` in the current directory when the flag is omitted. `link` checks your access before writing that file. The file contains only a format version and app UUID; it cannot change the account or API origin.
+
+`apps list` shows the apps available to your account, with their names, statuses, and UUIDs. `--json` returns an `apps` array without account or plan information.
+
+`deploy` rebuilds an existing app from its recorded source; Git apps use the latest source. It returns the new deployment UUID and status after the server accepts the request. It does not wait for the build to finish. Use `deployments logs <deployment-uuid>` to inspect the build. The public API calls this operation `restart` and requires `app:restart`. Sign in again if your saved session lacks that scope. A process-only restart and local directory/ZIP uploads are not available as CLI commands.
 
 `apps create` creates a new app and its first deployment, then prints both UUIDs. If the response leaves the outcome unclear, the CLI stops without retrying. Check the dashboard before trying again. Stopping an app, cancelling a deployment, and deleting an app require `--yes`; stopping the app does not mean cancelling its current deployment.
 
@@ -83,7 +89,7 @@ Commands use the app UUID from `--app`, or from `.deplexo.json` in the current d
 { "version": 1, "origin": "https://deplexo.com", "profile": "default" }
 ```
 
-Results go to stdout; pairing instructions and errors go to stderr. `--json` writes JSON, or one JSON object per line when following logs. Human output escapes terminal controls. The CLI emits no colors or animations, including when `NO_COLOR` is set. Help, version, and shell completion work offline.
+Results go to stdout; pairing instructions and errors go to stderr. `--json` writes JSON, or one JSON object per line when following logs. Human output escapes terminal controls. Human output uses aligned tables, labeled details, and colored status text. Tables switch to stacked fields when the terminal is too narrow. Colors are automatic on terminals and disabled when output is redirected. Use `--color always` to request colors explicitly or `--color never` to disable them. A nonempty `NO_COLOR` or `TERM=dumb` disables colors in every mode. JSON and completion scripts remain free of formatting codes; log contents are not recolored. No animations are used. Help, version, and shell completion work offline.
 
 | Exit code | Meaning                 |
 | --------- | ----------------------- |
@@ -96,7 +102,7 @@ Results go to stdout; pairing instructions and errors go to stderr. `--json` wri
 
 ## API gaps
 
-App listing, deployment to an existing app with `app:deploy`, deployment status polling without logs, and build log streaming still need confirmed public API contracts. Local directory and ZIP deployment also remain unimplemented until the upload and existing-app deployment contracts are published together. These features are not registered as commands. `apps create --repo` uses the documented creation endpoint. The CLI uses neither browser cookies nor private RPCs.
+A process-only restart, deployment status polling without logs, and build log streaming still need public API contracts. Local directory and ZIP deployment also remain unimplemented until the upload and existing-app deployment contracts are published together. These features are not registered as commands. `apps list` reads the public `/me` inventory, `apps create --repo` uses the creation endpoint, and `deploy` uses the documented rebuild endpoint at `/apps/{id}/restart`. The CLI uses neither browser cookies nor private RPCs.
 
 ## Verification and workflows
 

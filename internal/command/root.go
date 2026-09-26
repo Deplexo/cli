@@ -38,6 +38,7 @@ type Options struct {
 type application struct {
 	options                 Options
 	origin, profile         string
+	color                   string
 	insecure, noInput, json bool
 	started                 bool
 }
@@ -50,7 +51,7 @@ func Execute(ctx context.Context, options Options, args []string) int {
 		if !app.started {
 			err = output.Usage(err.Error())
 		}
-		output.Report(app.options.Err, err, app.json)
+		app.printer(app.options.Err).Report(err, app.json)
 	}
 	return output.ExitCode(err)
 }
@@ -88,7 +89,13 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	}
 	a := &application{options: options}
 	root := &cobra.Command{Use: "deplexo", Short: "Create and manage Deplexo apps from your terminal", SilenceErrors: true, SilenceUsage: true,
-		PersistentPreRun: func(*cobra.Command, []string) { a.started = true },
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			a.started = true
+			if a.color != "auto" && a.color != "always" && a.color != "never" {
+				return output.Usage("--color must be auto, always, or never")
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return output.Usage("unknown command; run `deplexo --help`")
@@ -99,13 +106,26 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	root.SetIn(options.In)
 	root.SetOut(options.Out)
 	root.SetErr(options.Err)
+	defaultHelp := root.HelpFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		var text strings.Builder
+		writer := cmd.OutOrStdout()
+		cmd.SetOut(&text)
+		defaultHelp(cmd, args)
+		cmd.SetOut(writer)
+		_ = a.printer(writer).Help(text.String())
+	})
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return output.Usage(err.Error()) })
 	root.PersistentFlags().StringVar(&a.origin, "origin", "", "HTTPS API origin (DEPLEXO_ORIGIN)")
 	root.PersistentFlags().StringVar(&a.profile, "profile", "", "Sign-in profile (DEPLEXO_PROFILE)")
 	root.PersistentFlags().BoolVar(&a.insecure, "insecure-storage", false, "Use a plaintext credential file instead of the OS keyring")
 	root.PersistentFlags().BoolVar(&a.noInput, "no-input", false, "Disable prompts and browser opening")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "Write JSON; use one object per line with logs --follow")
-	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand())
+	root.PersistentFlags().StringVar(&a.color, "color", "auto", "Terminal colors: auto, always, or never (respects NO_COLOR)")
+	root.AddGroup(&cobra.Group{ID: "apps", Title: "Apps and deployments:"}, &cobra.Group{ID: "account", Title: "Account:"}, &cobra.Group{ID: "other", Title: "Other commands:"})
+	root.SetHelpCommandGroupID("other")
+	root.SetCompletionCommandGroupID("other")
+	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.deployCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand())
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the CLI version", Args: noArgs,
 		RunE: func(*cobra.Command, []string) error {
 			result := struct {
@@ -120,6 +140,20 @@ func newRoot(options Options) (*cobra.Command, *application) {
 			_, err := fmt.Fprintln(options.Out, "deplexo "+output.Safe(options.Version)+" ("+runtime.GOOS+"/"+runtime.GOARCH+")")
 			return err
 		}})
+	// Cobra's command lookup needs to know --help is boolean before parsing
+	// later flags such as --color always.
+	root.InitDefaultHelpFlag()
+	for _, command := range root.Commands() {
+		command.InitDefaultHelpFlag()
+		switch command.Name() {
+		case "auth", "whoami":
+			command.GroupID = "account"
+		case "version":
+			command.GroupID = "other"
+		default:
+			command.GroupID = "apps"
+		}
+	}
 	return root, a
 }
 
@@ -196,8 +230,22 @@ func (a *application) message(value any, text string) error {
 	if a.json {
 		return output.JSON(a.options.Out, value)
 	}
-	_, err := fmt.Fprintln(a.options.Out, output.Safe(text))
-	return err
+	return a.printer(a.options.Out).Message(text)
+}
+
+func (a *application) printer(w io.Writer) *output.Printer {
+	mode := a.color
+	if a.json {
+		mode = "never"
+	}
+	return output.NewPrinter(w, mode, a.options.LookupEnv)
+}
+
+func (a *application) details(value any, title string, fields [][2]string) error {
+	if a.json {
+		return output.JSON(a.options.Out, value)
+	}
+	return a.printer(a.options.Out).Fields(title, fields)
 }
 
 func (a *application) logText(text string) error {

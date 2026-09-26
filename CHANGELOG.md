@@ -2,6 +2,15 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.0-beta.2
+
+- List your apps with `deplexo apps list`, including names, statuses, and UUIDs.
+- Rebuild an existing app with `deplexo deploy --app <uuid>`, or use the app linked to your directory. The command reports the queued deployment ID; it does not wait for the build to finish.
+- Read app details and deployment history in aligned tables and labeled fields. Terminal output colors statuses and help headings, with `--color` and `NO_COLOR` controls. JSON and completion scripts keep their existing formatting.
+- New sign-ins request `app:restart` for rebuilding existing apps. Existing sessions need a new sign-in to grant this permission.
+
+Native verification remains incomplete outside Linux ARM64. This beta does not add a process-only restart or local source uploads.
+
 ## 0.1.0-beta.1
 
 The first beta of the Deplexo CLI. Builds target Linux, macOS, and Windows on amd64 and arm64. Native verification is incomplete; see the release notes for the checks completed on each platform.

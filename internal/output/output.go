@@ -65,6 +65,10 @@ func Safe(s string) string {
 func JSON(w io.Writer, value any) error { return json.NewEncoder(w).Encode(value) }
 
 func Report(w io.Writer, err error, jsonOutput bool) {
+	NewPrinter(w, "auto", nil).Report(err, jsonOutput)
+}
+
+func (p *Printer) Report(err error, jsonOutput bool) {
 	message := err.Error()
 	if errors.Is(err, context.Canceled) {
 		message = "interrupted"
@@ -78,11 +82,11 @@ func Report(w io.Writer, err error, jsonOutput bool) {
 		}
 	}
 	if jsonOutput {
-		_ = JSON(w, struct {
+		_ = JSON(p.w, struct {
 			Error    string `json:"error"`
 			ExitCode int    `json:"exit_code"`
 		}{message, ExitCode(err)})
 	} else {
-		_, _ = fmt.Fprintln(w, "Error: "+Safe(message))
+		p.Error(message)
 	}
 }

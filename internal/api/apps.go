@@ -30,6 +30,62 @@ type AppDetail struct {
 	App App `json:"app"`
 }
 
+// AppSummary contains only the app inventory fields shared by the public API.
+type AppSummary struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	Subdomain string `json:"subdomain"`
+}
+
+type Apps struct {
+	Apps []AppSummary `json:"apps"`
+}
+
+func (c *Client) Apps(ctx context.Context, token string) (Apps, error) {
+	// /me also returns account and plan information; the CLI decodes only apps.
+	var inventory struct {
+		Apps *[]AppSummary `json:"apps"`
+	}
+	if err := c.get(ctx, "/me", token, &inventory); err != nil {
+		return Apps{}, err
+	}
+	if inventory.Apps == nil {
+		return Apps{}, errors.New("API response is missing the app list")
+	}
+	for _, app := range *inventory.Apps {
+		if !ValidID(app.ID) || app.Status == "" {
+			return Apps{}, errors.New("API returned an incomplete app list")
+		}
+	}
+	return Apps{Apps: *inventory.Apps}, nil
+}
+
+type Redeployment struct {
+	AppID        string `json:"appId"`
+	DeploymentID string `json:"deploymentId"`
+	JobID        int64  `json:"jobId"`
+	CommitSHA    string `json:"commitSha"`
+	Status       string `json:"status"`
+}
+
+func (c *Client) Deploy(ctx context.Context, token, id string) (Redeployment, error) {
+	var result Redeployment
+	if !ValidID(id) {
+		return result, errors.New("app ID must be a UUID")
+	}
+	// The public restart endpoint rebuilds the recorded source; it is not a
+	// process-only restart. Keep that distinction in the CLI command and help.
+	err := c.post(ctx, "/apps/"+id+"/restart", token, struct{}{}, &result)
+	if err == nil && (result.AppID != id || !ValidID(result.DeploymentID) || result.Status == "") {
+		err = errors.New("API returned an incomplete deployment result")
+	}
+	if err != nil {
+		return result, mutationError(err)
+	}
+	return result, nil
+}
+
 func (c *Client) App(ctx context.Context, token, id string) (AppDetail, error) {
 	var result AppDetail
 	if !ValidID(id) {

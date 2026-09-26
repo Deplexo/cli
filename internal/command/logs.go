@@ -3,7 +3,6 @@ package command
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -40,12 +39,11 @@ func (a *application) deploymentsCommand() *cobra.Command {
 		if a.json {
 			return output.JSON(a.options.Out, result)
 		}
+		rows := make([][]string, 0, len(result.Data))
 		for _, deployment := range result.Data {
-			if _, err := fmt.Fprintf(a.options.Out, "%s  %s  %s\n", output.Safe(deployment.ID), output.Safe(deployment.Status), output.Safe(deployment.CreatedAt)); err != nil {
-				return err
-			}
+			rows = append(rows, []string{deployment.ID, deployment.Status, deployment.CreatedAt})
 		}
-		return nil
+		return a.printer(a.options.Out).Table([]string{"DEPLOYMENT", "STATUS", "CREATED"}, rows, "No deployments found.")
 	}}
 	list.Flags().StringVar(&appFlag, "app", "", "App UUID; defaults to .deplexo.json")
 	list.Flags().IntVar(&limit, "limit", 50, "Number of deployments to return (1 to 200)")

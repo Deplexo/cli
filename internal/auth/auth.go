@@ -52,7 +52,7 @@ func Scopes(raw string, readOnly bool) ([]string, error) {
 	if raw == "" {
 		raw = "profile:read app:read logs:read"
 		if !readOnly {
-			raw += " app:deploy"
+			raw += " app:deploy app:restart"
 		}
 	}
 	if len(raw) > 1024 {
