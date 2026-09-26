@@ -388,6 +388,45 @@ h3 {
   display: inline-block;
   overflow-wrap: anywhere;
 }
+.commands-section {
+  border-top: 1px solid var(--line);
+  padding: 36px 0;
+}
+.commands-intro {
+  max-width: 800px;
+  margin: 0 0 28px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.command-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px 48px;
+}
+.command-groups h3 {
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.command-groups dl {
+  margin: 18px 0 0;
+}
+.command-groups dt {
+  font-size: 13px;
+}
+.command-groups dd {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 4px 0 18px;
+}
+.command-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 20px 0 0;
+}
+.commands-section code {
+  overflow-wrap: anywhere;
+}
 code {
   font-family: var(--mono);
 }
@@ -488,7 +527,10 @@ footer a {
     padding: 0 22px;
   }
   header {
-    height: 82px;
+    height: auto;
+    padding: 16px 0;
+    flex-wrap: wrap;
+    gap: 8px 20px;
   }
   nav {
     gap: 15px;
@@ -559,6 +601,10 @@ footer a {
     grid-template-columns: 1fr;
     gap: 28px;
     padding: 36px 0;
+  }
+  .command-groups {
+    grid-template-columns: 1fr;
+    gap: 28px;
   }
   .next-steps article {
     border-bottom: 1px solid var(--line);

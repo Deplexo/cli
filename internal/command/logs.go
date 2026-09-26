@@ -149,7 +149,7 @@ func (a *application) logsCommand() *cobra.Command {
 	}}
 	command.Flags().StringVar(&appFlag, "app", "", "App UUID; defaults to .deplexo.json")
 	command.Flags().StringVar(&since, "since", "", "Resume cursor (nextSince) from an earlier log response")
-	command.Flags().BoolVar(&follow, "follow", false, "Poll for new runtime logs using the server cursor")
+	command.Flags().BoolVar(&follow, "follow", false, "Follow new runtime log lines")
 	command.Flags().IntVar(&limit, "limit", 500, "Maximum lines per request (1 to 1000)")
 	command.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Maximum time to follow logs")
 	return command

@@ -193,7 +193,7 @@ func extract(path, binary string, out io.Writer) error {
 	copyBinary := func(source io.Reader, size int64) error {
 		found++
 		if found != 1 || size <= 0 || size > maxPackage {
-			return errors.New("release archive must contain one bounded executable")
+			return errors.New("release archive must contain exactly one nonempty executable within the size limit")
 		}
 		n, err := io.Copy(out, io.LimitReader(source, size+1))
 		if err != nil || n != size {
@@ -210,7 +210,7 @@ func extract(path, binary string, out io.Writer) error {
 		for _, entry := range z.File {
 			if entry.Name == binary {
 				if !entry.Mode().IsRegular() || entry.UncompressedSize64 > maxPackage {
-					return errors.New("release executable is not a bounded regular file")
+					return errors.New("release executable is not a regular file or exceeds the size limit")
 				}
 				r, err := entry.Open()
 				if err != nil {

@@ -37,7 +37,7 @@ Use your chosen directory if you set `DEPLEXO_INSTALL_DIR`. Rerun the installer 
 
 ## Updates
 
-`deplexo upgrade` checks for a newer release and asks before replacing the executable. Use `deplexo upgrade --check` to check without installing, or `deplexo upgrade --yes` for an approved unattended upgrade. The updater verifies the archive checksum and the executable’s version and platform before replacing the installed file. It does not use your Deplexo credentials.
+`deplexo upgrade` checks for a newer release and asks before replacing the executable. Use `deplexo upgrade --check` to check without installing, or `deplexo upgrade --yes` to upgrade without a prompt. The updater verifies the archive checksum and the executable’s version and platform before replacing the installed file. It does not use your Deplexo credentials.
 
 After a successful interactive command, the CLI checks for updates at most once per day. If one is available, it asks `Upgrade now? [y/N]`; Enter skips reminders for 24 hours. Failed checks are cached too. Help, version, completion, JSON output, redirected output, `--no-input`, and CI skip automatic checks and prompts. Set `DEPLEXO_NO_UPDATE_CHECK=1` to disable them. Development builds do not update themselves.
 
@@ -108,7 +108,7 @@ Commands use the app UUID from `--app`, or from `.deplexo.json` in the current d
 { "version": 1, "origin": "https://deplexo.com", "profile": "default" }
 ```
 
-Results go to stdout; pairing instructions and errors go to stderr. `--json` writes JSON, or one JSON object per line when following logs. Human output escapes terminal controls. Human output uses aligned tables, labeled details, and colored status text. Tables switch to stacked fields when the terminal is too narrow. Colors are automatic on terminals and disabled when output is redirected. Use `--color always` to request colors explicitly or `--color never` to disable them. A nonempty `NO_COLOR` or `TERM=dumb` disables colors in every mode. JSON and completion scripts remain free of formatting codes; log contents are not recolored. No animations are used. Help, version, and shell completion work offline.
+Results go to stdout; pairing instructions and errors go to stderr. `--json` writes JSON, or one JSON object per line when following logs. Human output escapes terminal controls and uses aligned tables, labeled details, and colored status text. Tables switch to stacked fields when the terminal is too narrow. Colors are automatic on terminals and disabled when output is redirected. Use `--color always` to request colors explicitly or `--color never` to disable them. A nonempty `NO_COLOR` or `TERM=dumb` disables colors in every mode. JSON and completion scripts remain free of formatting codes; log contents are not recolored. No animations are used. Help, version, and shell completion work offline.
 
 | Exit code | Meaning                 |
 | --------- | ----------------------- |

@@ -70,7 +70,8 @@
           deplexo <span class="brand-label">CLI</span></a
         >
         <nav aria-label="Main navigation">
-          <a href="https://docs.deplexo.com">Docs</a
+          <a href="#commands">Commands</a
+          ><a href="https://docs.deplexo.com">Docs</a
           ><a href="https://github.com/Deplexo/cli"
             >GitHub <span aria-hidden="true">↗</span></a
           >
@@ -215,7 +216,8 @@
             <span class="step">02</span>
             <h3>Choose your app</h3>
             <p>
-              Link your working directory to an app using its dashboard UUID.
+              Run <code>deplexo apps list</code> to find your app's UUID, then
+              link it to your working directory.
             </p>
             <code>deplexo link --app &lt;app-id&gt;</code>
           </article>
@@ -228,6 +230,142 @@
             </p>
             <code>deplexo logs --follow</code>
           </article>
+        </section>
+        <section
+          class="commands-section"
+          id="commands"
+          aria-labelledby="commands-title"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Command reference</p>
+              <h2 id="commands-title">What you can run</h2>
+            </div>
+          </div>
+          <p class="commands-intro">
+            Link an app with <code>deplexo link --app &lt;app-id&gt;</code> to
+            use it in the commands below. Most app commands also accept
+            <code>--app &lt;app-id&gt;</code>. Replace
+            <code>&lt;app-id&gt;</code> and
+            <code>&lt;deployment-id&gt;</code> with their UUIDs. Add
+            <code>--help</code> to any command to see its flags.
+          </p>
+          <div class="command-groups">
+            <section aria-labelledby="commands-apps">
+              <h3 id="commands-apps">Apps</h3>
+              <dl>
+                <dt><code>deplexo apps list</code></dt>
+                <dd>List your apps, their UUIDs, and current statuses.</dd>
+                <dt><code>deplexo apps get</code></dt>
+                <dd>Show details for the selected app.</dd>
+                <dt>
+                  <code
+                    >deplexo apps create --name &lt;name&gt; --repo
+                    &lt;url&gt;</code
+                  >
+                </dt>
+                <dd>
+                  Create an app and its first deployment from an HTTPS Git
+                  repository URL.
+                </dd>
+                <dt><code>deplexo apps start</code></dt>
+                <dd>Start a stopped app without rebuilding it.</dd>
+                <dt><code>deplexo apps stop --yes</code></dt>
+                <dd>
+                  Stop the app. This does not cancel an active deployment.
+                </dd>
+                <dt><code>deplexo apps delete --yes</code></dt>
+                <dd>Delete the selected app and its resources.</dd>
+              </dl>
+              <p class="command-note">
+                Check the selected app before using <code>--yes</code>. Start,
+                stop, and delete need <code>app:start</code>,
+                <code>app:stop</code>, and <code>app:delete</code> permissions,
+                respectively. Request these with
+                <code>auth login --scopes</code>
+                or use an API key with those permissions. Custom sign-in scopes
+                replace the defaults and must include <code>profile:read</code>.
+              </p>
+            </section>
+            <section aria-labelledby="commands-deployments">
+              <h3 id="commands-deployments">Deployments and logs</h3>
+              <dl>
+                <dt><code>deplexo deploy</code></dt>
+                <dd>
+                  Rebuild the selected app from its recorded source. The command
+                  returns the queued deployment's UUID without waiting for the
+                  build.
+                </dd>
+                <dt><code>deplexo deployments list</code></dt>
+                <dd>Show the selected app's deployment history.</dd>
+                <dt>
+                  <code>deplexo deployments logs &lt;deployment-id&gt;</code>
+                </dt>
+                <dd>Read a snapshot of that deployment's build logs.</dd>
+                <dt><code>deplexo logs --follow</code></dt>
+                <dd>
+                  Follow runtime logs. Omit <code>--follow</code> for a
+                  snapshot.
+                </dd>
+                <dt><code>deplexo apps cancel --yes</code></dt>
+                <dd>Cancel the selected app's current deployment.</dd>
+              </dl>
+              <p class="command-note">
+                <code>deploy</code> needs <code>app:restart</code>, included in
+                new sign-ins. Sign in again if an older session lacks it.
+              </p>
+            </section>
+            <section aria-labelledby="commands-auth">
+              <h3 id="commands-auth">Sign in and account</h3>
+              <dl>
+                <dt><code>deplexo auth login</code></dt>
+                <dd>
+                  Sign in with a pairing code. Press Enter when prompted to open
+                  the browser.
+                </dd>
+                <dt><code>deplexo auth status</code></dt>
+                <dd>Check your current sign-in with the API.</dd>
+                <dt><code>deplexo whoami</code></dt>
+                <dd>Show the account used by your token or sign-in.</dd>
+                <dt><code>deplexo auth logout</code></dt>
+                <dd>Sign out and remove this profile's saved credentials.</dd>
+              </dl>
+            </section>
+            <section aria-labelledby="commands-tools">
+              <h3 id="commands-tools">Local setup and CLI tools</h3>
+              <dl>
+                <dt><code>deplexo link --app &lt;app-id&gt;</code></dt>
+                <dd>Link the current directory to an app.</dd>
+                <dt><code>deplexo unlink</code></dt>
+                <dd>
+                  Remove the directory's app link. The app is not deleted.
+                </dd>
+                <dt><code>deplexo upgrade</code></dt>
+                <dd>
+                  Check for a newer CLI and ask before installing. Add
+                  <code>--check</code> to check only. Available in beta.3 and
+                  newer.
+                </dd>
+                <dt><code>deplexo version</code></dt>
+                <dd>Print the installed CLI version.</dd>
+                <dt><code>deplexo completion &lt;shell&gt;</code></dt>
+                <dd>
+                  Generate completion scripts for Bash, zsh, fish, or
+                  PowerShell.
+                </dd>
+                <dt><code>deplexo --help</code></dt>
+                <dd>
+                  List commands and global flags. Help, version, and completion
+                  work offline.
+                </dd>
+              </dl>
+            </section>
+          </div>
+          <p class="command-note">
+            Use <code>--json</code> for machine-readable results and
+            <code>--no-input</code> to disable prompts. Following logs with
+            <code>--json</code> writes one JSON object per line.
+          </p>
         </section>
         <aside class="automation">
           <div>

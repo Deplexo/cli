@@ -375,12 +375,16 @@ func TestLogoutClearsAfterRemoteFailureAndMalformedState(t *testing.T) {
 func TestCancelledLogoutClearsLocalStateAndPreservesWarning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	releaseResponse := make(chan struct{})
+	defer close(releaseResponse)
 	store := &memoryStore{}
 	m := managerFor(t, store, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/revoke" {
 			_, _ = io.Copy(io.Discard, r.Body)
 			cancel()
 			<-r.Context().Done()
+			// Do not let an implicit 200 response race the client's cancellation.
+			<-releaseResponse
 		}
 	})
 	store.s = validSession(m.API.Origin())
