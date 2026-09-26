@@ -1,0 +1,159 @@
+name: Prepare release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref_type == 'tag'
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Check the release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: go run scripts/package.go -check-release -version "$RELEASE_TAG"
+      - name: Verify source and build release archives
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          bash scripts/test.sh
+          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --timeout 5m
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+          source_commit=$(git rev-parse HEAD)
+          for target_os in linux darwin windows; do
+            for target_arch in amd64 arm64; do
+              go run scripts/package.go -os "$target_os" -arch "$target_arch" -version "$RELEASE_TAG" -commit "$source_commit"
+            done
+          done
+          cat dist/*.sha256 > dist/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-archives
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+  native:
+    needs: build
+    runs-on:
+      [self-hosted, "${{ matrix.runner_os }}", "${{ matrix.runner_arch }}"]
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner_os: Linux
+            runner_arch: X64
+            os: linux
+            arch: amd64
+            ext: tar.gz
+          - runner_os: Linux
+            runner_arch: ARM64
+            os: linux
+            arch: arm64
+            ext: tar.gz
+          - runner_os: macOS
+            runner_arch: X64
+            os: darwin
+            arch: amd64
+            ext: tar.gz
+          - runner_os: macOS
+            runner_arch: ARM64
+            os: darwin
+            arch: arm64
+            ext: tar.gz
+          - runner_os: Windows
+            runner_arch: X64
+            os: windows
+            arch: amd64
+            ext: zip
+          - runner_os: Windows
+            runner_arch: ARM64
+            os: windows
+            arch: arm64
+            ext: zip
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-archives
+          path: release-archives
+      - name: Test native credentials and the release package
+        shell: bash
+        env:
+          DEPLEXO_TEST_NATIVE_KEYRING: "1"
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET_OS: ${{ matrix.os }}
+          TARGET_ARCH: ${{ matrix.arch }}
+          ARCHIVE_EXT: ${{ matrix.ext }}
+        run: |
+          bash scripts/test.sh
+          go test ./internal/credentials -run '^TestNativeKeyring$' -count=1 -v
+          go test ./scripts -count=1 -v
+          source_commit=$(git rev-parse HEAD)
+          go run scripts/package.go -verify "release-archives/deplexo_${RELEASE_TAG}_${TARGET_OS}_${TARGET_ARCH}.${ARCHIVE_EXT}" -version "$RELEASE_TAG" -commit "$source_commit"
+  draft:
+    needs: [build, native]
+    runs-on: [self-hosted, Linux]
+    environment: release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Create a fresh artifact directory
+        id: directory
+        shell: bash
+        run: |
+          artifact_dir=$(mktemp -d "$RUNNER_TEMP/deplexo-release.XXXXXXXX")
+          echo "path=$artifact_dir" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-archives
+          path: ${{ steps.directory.outputs.path }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.directory.outputs.path }}/deplexo_*
+      - name: Attach verified packages to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          ARTIFACT_DIR: ${{ steps.directory.outputs.path }}
+        run: |
+          cd "$ARTIFACT_DIR"
+          sha256sum -c SHA256SUMS
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --prerelease
+          fi
+          gh release upload "$RELEASE_TAG" ./*.tar.gz ./*.zip SHA256SUMS --clobber
