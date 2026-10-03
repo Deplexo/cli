@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/danieljoos/wincred v1.2.3
 	github.com/godbus/dbus/v5 v5.2.2
-	github.com/mattn/go-colorable v0.1.14
+	github.com/mattn/go-colorable v0.1.15
 	github.com/mattn/go-runewidth v0.0.30
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.48.0
