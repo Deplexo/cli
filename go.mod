@@ -18,4 +18,5 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
+	golang.org/x/oauth2 v0.37.0 // indirect
 )

@@ -172,8 +172,23 @@ func (m *Manager) accept(ctx context.Context, v credentials.Vault, d api.Discove
 	return nil
 }
 
-// Login keeps the refresh/logout lock until approval and credential storage finish.
-func (m *Manager) Login(ctx context.Context, scopes []string, pairing func(context.Context, api.Device) error) (api.Profile, error) {
+func (m *Manager) LoginDevice(ctx context.Context, scopes []string, pairing func(context.Context, api.Device) error) (api.Profile, error) {
+	return m.login(ctx, scopes, func(ctx context.Context, d api.Discovery) (api.Tokens, error) {
+		device, err := m.API.Authorize(ctx, d, strings.Join(scopes, " "))
+		if err != nil {
+			return api.Tokens{}, err
+		}
+		pollCtx, cancel := context.WithTimeout(ctx, time.Duration(device.ExpiresIn)*time.Second)
+		defer cancel()
+		if err := pairing(pollCtx, device); err != nil {
+			return api.Tokens{}, err
+		}
+		return m.poll(pollCtx, d, device)
+	})
+}
+
+// login keeps the refresh/logout lock until approval and credential storage finish.
+func (m *Manager) login(ctx context.Context, scopes []string, acquire func(context.Context, api.Discovery) (api.Tokens, error)) (api.Profile, error) {
 	if m.TokenEnvSet {
 		return api.Profile{}, output.Usage("unset DEPLEXO_TOKEN before signing in")
 	}
@@ -194,19 +209,11 @@ func (m *Manager) Login(ctx context.Context, scopes []string, pairing func(conte
 				return output.Usage("the server does not support a requested scope")
 			}
 		}
-		device, err := m.API.Authorize(ctx, d, strings.Join(scopes, " "))
+		t, err := acquire(ctx, d)
 		if err != nil {
 			return err
 		}
-		pollCtx, pollCancel := context.WithTimeout(ctx, time.Duration(device.ExpiresIn)*time.Second)
-		defer pollCancel()
-		if err := pairing(pollCtx, device); err != nil {
-			return err
-		}
-		t, err := m.poll(pollCtx, d, device)
-		if err != nil {
-			return err
-		}
+
 		if err := m.accept(ctx, v, d, t, scopes, "", func(s credentials.Session) { profile = api.Profile{ID: s.AccountID, Email: s.Email} }); err != nil {
 			return err
 		}

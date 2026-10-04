@@ -11,11 +11,13 @@ import (
 const ClientID = "deplexo-cli"
 
 type Discovery struct {
-	Issuer             string   `json:"issuer"`
-	DeviceEndpoint     string   `json:"device_authorization_endpoint"`
-	TokenEndpoint      string   `json:"token_endpoint"`
-	RevocationEndpoint string   `json:"revocation_endpoint"`
-	Scopes             []string `json:"scopes_supported"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	CodeChallengeMethods  []string `json:"code_challenge_methods_supported"`
+	Issuer                string   `json:"issuer"`
+	DeviceEndpoint        string   `json:"device_authorization_endpoint"`
+	TokenEndpoint         string   `json:"token_endpoint"`
+	RevocationEndpoint    string   `json:"revocation_endpoint"`
+	Scopes                []string `json:"scopes_supported"`
 }
 
 func (c *Client) Discover(ctx context.Context) (Discovery, error) {
@@ -32,6 +34,15 @@ func (c *Client) Discover(ctx context.Context) (Discovery, error) {
 			return d, err
 		}
 		u, _ := url.Parse(endpoint)
+		if u.RawQuery != "" || u.ForceQuery {
+			return d, errors.New("OAuth endpoint must not contain a query")
+		}
+	}
+	if d.AuthorizationEndpoint != "" {
+		if err := c.ValidateURL(d.AuthorizationEndpoint); err != nil {
+			return d, err
+		}
+		u, _ := url.Parse(d.AuthorizationEndpoint)
 		if u.RawQuery != "" || u.ForceQuery {
 			return d, errors.New("OAuth endpoint must not contain a query")
 		}
@@ -120,4 +131,10 @@ func (c *Client) Profile(ctx context.Context, token string) (Profile, error) {
 		err = errors.New("API response is missing the account ID or email")
 	}
 	return profile, err
+}
+
+func (c *Client) ExchangeCode(ctx context.Context, d Discovery, code, verifier, redirect string) (Tokens, error) {
+	var tokens Tokens
+	err := c.form(ctx, d.TokenEndpoint, url.Values{"grant_type": {"authorization_code"}, "code": {code}, "code_verifier": {verifier}, "redirect_uri": {redirect}, "resource": {c.origin + "/user/api/v1"}}, &tokens)
+	return tokens, err
 }

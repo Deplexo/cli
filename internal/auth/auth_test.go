@@ -303,7 +303,7 @@ func TestLoginPersistenceFailureRevokesGrant(t *testing.T) {
 			revoked = true
 		}
 	})
-	_, err := m.Login(context.Background(), []string{"profile:read"}, func(context.Context, api.Device) error { pairing = true; return nil })
+	_, err := m.LoginDevice(context.Background(), []string{"profile:read"}, func(context.Context, api.Device) error { pairing = true; return nil })
 	if err == nil || !revoked || !store.missing {
 		t.Fatalf("persistence handling: %v revoked=%v missing=%v", err, revoked, store.missing)
 	}
@@ -450,7 +450,7 @@ func TestLoginDoesNotRevokeCrossOriginPreviousSession(t *testing.T) {
 		}
 	})
 	store.s = validSession("https://another.example")
-	_, err := m.Login(context.Background(), []string{"profile:read"}, func(context.Context, api.Device) error { return nil })
+	_, err := m.LoginDevice(context.Background(), []string{"profile:read"}, func(context.Context, api.Device) error { return nil })
 	if err == nil || revocations.Load() != 0 || store.s.Origin != m.API.Origin() {
 		t.Fatalf("cross-origin replacement: %v revocations=%d", err, revocations.Load())
 	}

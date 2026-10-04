@@ -17,8 +17,8 @@ import (
 func (a *application) authCommand() *cobra.Command {
 	group := &cobra.Command{Use: "auth", Short: "Sign in, check your account, or sign out", Args: noArgs}
 	var rawScopes string
-	var readOnly, noBrowser bool
-	login := &cobra.Command{Use: "login", Short: "Sign in with a pairing code in your browser", Args: noArgs,
+	var readOnly, noBrowser, device bool
+	login := &cobra.Command{Use: "login", Short: "Sign in through your browser", Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed("scopes") && rawScopes == "" {
 				return output.Usage("--scopes must include profile:read")
@@ -31,9 +31,22 @@ func (a *application) authCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			profile, err := manager.Login(cmd.Context(), scopes, func(ctx context.Context, device api.Device) error {
-				return a.pair(ctx, device, noBrowser)
-			})
+			var profile api.Profile
+			if device || noBrowser || a.noInput || !a.options.IsTerminal() || a.remoteTerminal() {
+				profile, err = manager.LoginDevice(cmd.Context(), scopes, func(ctx context.Context, d api.Device) error {
+					return a.pair(ctx, d, noBrowser || a.noInput || a.remoteTerminal())
+				})
+			} else {
+				profile, err = manager.LoginBrowser(cmd.Context(), scopes, func(ctx context.Context, address string) error {
+					if _, err := fmt.Fprintln(a.options.Err, "Opening Deplexo in your browser. Review the account and permissions to continue."); err != nil {
+						return err
+					}
+					if err := a.options.OpenBrowser(ctx, address); err != nil {
+						return errors.New("could not open a browser; run deplexo auth login --device")
+					}
+					return nil
+				})
+			}
 			if err != nil {
 				return err
 			}
@@ -41,6 +54,7 @@ func (a *application) authCommand() *cobra.Command {
 		}}
 	login.Flags().StringVar(&rawScopes, "scopes", "", "Scopes to request, separated by spaces or commas; replaces the defaults")
 	login.Flags().BoolVar(&readOnly, "read-only", false, "Request read access to your profile, apps, and logs")
+	login.Flags().BoolVar(&device, "device", false, "Use a pairing link that can be opened on another device")
 	login.Flags().BoolVar(&noBrowser, "no-browser", false, "Print pairing instructions without opening a browser")
 	group.AddCommand(login)
 	status := a.whoamiCommand()
@@ -62,7 +76,11 @@ func (a *application) authCommand() *cobra.Command {
 }
 
 func (a *application) pair(ctx context.Context, device api.Device, noBrowser bool) error {
-	if err := a.printer(a.options.Err).Fields("Sign in to Deplexo", [][2]string{{"Open", device.VerificationURI}, {"Pairing code", device.UserCode}}); err != nil {
+	address := device.VerificationURI
+	if device.VerificationURIComplete != "" {
+		address = device.VerificationURIComplete
+	}
+	if err := a.printer(a.options.Err).Fields("Sign in to Deplexo", [][2]string{{"Open", address}, {"Pairing code", device.UserCode}}); err != nil {
 		return err
 	}
 	if !noBrowser && !a.noInput && a.options.IsTerminal() {
@@ -74,7 +92,7 @@ func (a *application) pair(ctx context.Context, device api.Device, noBrowser boo
 			return err
 		}
 		if open {
-			if err := a.options.OpenBrowser(ctx, device.VerificationURI); err != nil {
+			if err := a.options.OpenBrowser(ctx, address); err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
@@ -151,4 +169,13 @@ func (a *application) whoamiCommand() *cobra.Command {
 			}
 			return a.details(profile, "Signed-in account", [][2]string{{"Email", profile.Email}, {"Account", profile.ID}})
 		}}
+}
+
+func (a *application) remoteTerminal() bool {
+	for _, key := range []string{"SSH_CONNECTION", "SSH_TTY"} {
+		if value, _ := a.options.LookupEnv(key); value != "" {
+			return true
+		}
+	}
+	return false
 }
