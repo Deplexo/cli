@@ -9,7 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Run CI, native platform checks, release packaging and the website on GitHub-hosted runners. Pull requests now run CI automatically.
 - Fix replacing an existing installation with Windows PowerShell 5.1. Native tests keep terminal input open on macOS and verify Windows directory pinning during upgrades.
 
-This remains a beta. Native credential and installer verification across all six targets is still incomplete; see the release notes for completed checks.
+Automated native credential, installer and package checks passed on all six targets. This remains a beta; Windows ARM64 runs ordinary tests because Go does not support its race detector there.
 
 ## 0.1.0-beta.3
 
