@@ -160,7 +160,7 @@ func (p *Printer) Table(headers []string, rows [][]string, empty string) error {
 
 func (p *Printer) Help(text string) error {
 	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-		line = Safe(line)
+		line = Safe(strings.ReplaceAll(line, "\t", "    "))
 		if strings.HasSuffix(line, ":") && !strings.HasPrefix(line, " ") {
 			line = p.style(line, "1;36")
 		}

@@ -65,7 +65,7 @@ deplexo auth logout
 
 On a local interactive terminal, sign-in opens your browser to review the account and permissions. Approval returns to a temporary loopback listener using authorization code with S256 PKCE. SSH sessions, `--no-input`, and redirected input use device authorization. Use `--device` to choose it explicitly, or `--no-browser` to print the pairing link without opening a browser. The link includes the pairing code; verify that the browser shows the same code before approving. Ordinary commands never start sign-in.
 
-Sign-in requests `profile:read app:read app:deploy app:restart logs:read` by default. Use `--read-only` for read access. `--scopes` replaces the defaults with the scopes you specify and must include `profile:read` for a stored sign-in. To start, stop, or delete apps, also request `app:start`, `app:stop`, or `app:delete` as needed.
+Sign-in requests `profile:read app:read app:deploy app:restart app:start app:stop logs:read` by default. Use `--read-only` for read access. `--scopes` replaces the defaults with the scopes you specify and must include `profile:read` for a stored sign-in. Deleting apps requires explicitly requesting `app:delete`. If an existing session lacks start or stop permission, run `deplexo auth login` again to approve it.
 
 The CLI stores credentials in Linux Secret Service, macOS Keychain, or Windows Credential Manager. Unlock your keyring before running a command; the Linux adapter will not open an unlock prompt. macOS Keychain can request desktop approval, so `--no-input` on macOS requires `DEPLEXO_TOKEN` or `--insecure-storage`.
 
@@ -99,6 +99,12 @@ Commands use the app UUID from `--app`, or from `.deplexo.json` in the current d
 `apps create` creates a new app and its first deployment, then prints both UUIDs. If the response leaves the outcome unclear, the CLI stops without retrying. Check the dashboard before trying again. Stopping an app, cancelling a deployment, and deleting an app require `--yes`; stopping the app does not mean cancelling its current deployment.
 
 `logs --follow` requests new runtime logs using the server's resume cursor and filters repeated lines by their recent event IDs. It passes the cursor back unchanged and stops after `--timeout`, which defaults to 30 minutes. Build log commands return a snapshot for the deployment UUID you request.
+
+## Get support
+
+Run `deplexo support` for [email support](mailto:support@deplexo.com), the [Discord community](https://dsc.gg/deplexo), and [documentation](https://docs.deplexo.com). It works offline without signing in; `--json` returns the links for scripts. Use email for account-specific questions and Discord for community help. Include your app UUID and CLI version, but never share credentials or environment secrets.
+
+Interactive login shows the connected website, documentation, and commands to list your apps or find support. See the [command reference](https://docs.deplexo.com/reference/cli/) for all commands and flags.
 
 ## Configuration and output
 

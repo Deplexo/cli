@@ -91,7 +91,7 @@ func (a *application) notifyUpdate(ctx context.Context, cmd *cobra.Command) {
 		return
 	}
 	for c := cmd; c != nil; c = c.Parent() {
-		if c.Name() == "help" || c.Name() == "version" || c.Name() == "completion" || c.Name() == "upgrade" || c.Name() == "__complete" || c.Name() == "__completeNoDesc" {
+		if c.Name() == "help" || c.Name() == "version" || c.Name() == "completion" || c.Name() == "upgrade" || c.Name() == "support" || c.Name() == "__complete" || c.Name() == "__completeNoDesc" {
 			return
 		}
 	}

@@ -104,6 +104,7 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	}
 	a := &application{options: options}
 	root := &cobra.Command{Use: "deplexo", Short: "Create and manage Deplexo apps from your terminal", SilenceErrors: true, SilenceUsage: true,
+		Long: "Deplexo — deploy and manage your apps from the terminal.\n\nWebsite: " + api.DefaultOrigin + "\nDocs:    " + docsURL + "\nSupport: deplexo support",
 		PersistentPreRunE: func(*cobra.Command, []string) error {
 			a.started = true
 			if a.color != "auto" && a.color != "always" && a.color != "never" {
@@ -140,7 +141,7 @@ func newRoot(options Options) (*cobra.Command, *application) {
 	root.AddGroup(&cobra.Group{ID: "apps", Title: "Apps and deployments:"}, &cobra.Group{ID: "account", Title: "Account:"}, &cobra.Group{ID: "other", Title: "Other commands:"})
 	root.SetHelpCommandGroupID("other")
 	root.SetCompletionCommandGroupID("other")
-	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.deployCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand(), a.upgradeCommand())
+	root.AddCommand(a.authCommand(), a.whoamiCommand(), a.appsCommand(), a.deployCommand(), a.linkCommand(), a.unlinkCommand(), a.deploymentsCommand(), a.logsCommand(), a.upgradeCommand(), a.supportCommand())
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the CLI version", Args: noArgs,
 		RunE: func(*cobra.Command, []string) error {
 			result := struct {
@@ -163,7 +164,7 @@ func newRoot(options Options) (*cobra.Command, *application) {
 		switch command.Name() {
 		case "auth", "whoami":
 			command.GroupID = "account"
-		case "version", "upgrade":
+		case "version", "upgrade", "support":
 			command.GroupID = "other"
 		default:
 			command.GroupID = "apps"

@@ -19,6 +19,7 @@ func (a *application) authCommand() *cobra.Command {
 	var rawScopes string
 	var readOnly, noBrowser, device bool
 	login := &cobra.Command{Use: "login", Short: "Sign in through your browser", Args: noArgs,
+		Long: "Sign in through your browser. By default, request access to your profile, apps,\nlogs, deployments, and app start/stop operations. Use --read-only for read access.\nDeletion requires app:delete through --scopes, which replaces the defaults.\nSign in again to approve permissions missing from an existing session.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed("scopes") && rawScopes == "" {
 				return output.Usage("--scopes must include profile:read")
@@ -50,7 +51,7 @@ func (a *application) authCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.message(profile, "Signed in as "+profile.Email+".")
+			return a.loginResult(profile, manager.API.Origin())
 		}}
 	login.Flags().StringVar(&rawScopes, "scopes", "", "Scopes to request, separated by spaces or commas; replaces the defaults")
 	login.Flags().BoolVar(&readOnly, "read-only", false, "Request read access to your profile, apps, and logs")
@@ -73,6 +74,19 @@ func (a *application) authCommand() *cobra.Command {
 			}{true}, "Signed out.")
 		}})
 	return group
+}
+
+func (a *application) loginResult(profile api.Profile, origin string) error {
+	if a.json || a.noInput || !a.options.IsOutputTerminal(a.options.Out) {
+		return a.message(profile, "Signed in as "+profile.Email+".")
+	}
+	return a.printer(a.options.Out).Fields("Signed in to Deplexo", [][2]string{
+		{"Email", profile.Email},
+		{"Website", origin},
+		{"Docs", docsURL},
+		{"Your apps", "deplexo apps list"},
+		{"Get help", "deplexo support"},
+	})
 }
 
 func (a *application) pair(ctx context.Context, device api.Device, noBrowser bool) error {
