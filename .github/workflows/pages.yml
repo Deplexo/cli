@@ -27,7 +27,7 @@ concurrency:
 jobs:
   refresh:
     if: github.event_name == 'release'
-    runs-on: [self-hosted, Linux]
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       actions: write
@@ -39,7 +39,7 @@ jobs:
         run: gh workflow run pages.yml --ref main
   deploy:
     if: github.event_name != 'release' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, Linux]
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
       name: github-pages

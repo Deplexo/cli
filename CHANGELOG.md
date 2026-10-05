@@ -2,6 +2,14 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.0-beta.4
+
+- Sign in from a local interactive terminal through your browser with S256 PKCE and a temporary loopback callback.
+- Use device authorization over SSH or with `--device`. `--no-browser` prints pairing instructions; `--no-input` and redirected input also use device authorization.
+- Run CI, native platform checks, release packaging and the website on GitHub-hosted runners. Pull requests now run CI automatically.
+
+This remains a beta. Native credential and installer verification across all six targets is still incomplete; see the release notes for completed checks.
+
 ## 0.1.0-beta.3
 
 - Install with the plain curl or PowerShell command. It selects the latest stable release, or the newest beta while no stable release exists. Version pinning remains available for CI.

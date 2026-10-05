@@ -8,7 +8,7 @@ The CLI is under development. Builds target Linux, macOS, and Windows on amd64 a
 
 ## Install
 
-Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The current beta is `v0.1.0-beta.3`; native testing is incomplete, so check the release notes for your platform. To install the beta on Linux or macOS:
+Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The current beta is `v0.1.0-beta.4`; native testing is incomplete, so check the release notes for your platform. To install the beta on Linux or macOS:
 
 ```sh
 curl -fsSL https://cli.deplexo.com/install.sh | sh
@@ -63,7 +63,7 @@ deplexo auth status
 deplexo auth logout
 ```
 
-Sign-in prints the verification URL and pairing code, then asks you to press Enter before opening your browser. Type `n` to continue manually. Use `--no-browser` to skip that prompt. `--no-input` and redirected input also skip prompts and browser opening. Ordinary commands never start sign-in.
+On a local interactive terminal, sign-in opens your browser to review the account and permissions. Approval returns to a temporary loopback listener using authorization code with S256 PKCE. SSH sessions, `--no-input`, and redirected input use device authorization. Use `--device` to choose it explicitly, or `--no-browser` to print the pairing link without opening a browser. The link includes the pairing code; verify that the browser shows the same code before approving. Ordinary commands never start sign-in.
 
 Sign-in requests `profile:read app:read app:deploy app:restart logs:read` by default. Use `--read-only` for read access. `--scopes` replaces the defaults with the scopes you specify and must include `profile:read` for a stored sign-in. To start, stop, or delete apps, also request `app:start`, `app:stop`, or `app:delete` as needed.
 
@@ -137,13 +137,13 @@ go run scripts/package.go
 
 The packaging script writes an archive and checksum, with dependency licenses included in the archive. When the target matches the build host, it extracts the packaged executable and checks its version and help output.
 
-All workflows use self-hosted runners. CI runs on pushes to `main` or when started manually, then builds archives for all six targets. Fork pull requests do not trigger it automatically. Review contributions before running them on a trusted branch; use disposable, isolated runners for untrusted code so it cannot access organizational resources. CI needs no production secrets.
+All workflows use GitHub-hosted runners. CI runs on pull requests, pushes to `main`, and manual dispatch, then builds archives for all six targets. CI needs no production secrets.
 
-The native workflow selects a runner by its `self-hosted`, OS, and architecture labels. Runners need Bash (Git Bash on Windows) and an isolated, unlocked native keyring. Targets that support Go's race detector also need a C compiler supported by Go. Windows ARM64 runs ordinary tests because Go does not support race tests there. Set `DEPLEXO_TEST_NATIVE_KEYRING=1` to test keyring storage locally. The test saves, reads, and deletes its own uniquely named entry. Skipping it leaves native credential storage unverified.
+The native workflow selects a GitHub-hosted runner for Linux, macOS, or Windows on amd64 or arm64. Linux jobs start an isolated, unlocked Secret Service; macOS and Windows use the disposable runner’s native credential store. Windows ARM64 runs ordinary tests because Go does not support race tests there. Set `DEPLEXO_TEST_NATIVE_KEYRING=1` to test keyring storage locally. The test saves, reads, and deletes its own uniquely named entry. Skipping it leaves native credential storage unverified.
 
 Release Please prepares a version and changelog PR from Conventional Commits. Merging that PR creates an immutable tag and a draft release, then explicitly dispatches release verification at the tag. The packaging tool checks that the tag, release manifest and clean source commit agree. Stable releases and release candidates require all six native platform jobs to pass, including uncached keyring and installer tests. Tags ending in `-beta.N` may publish cross-compiled prereleases after build, test, lint and vulnerability checks; their release notes must state which native checks remain pending. Both paths attach checksums and provenance and require approval through the protected `release` environment. An existing published release cannot be overwritten by this workflow.
 
-The `release` environment needs required reviewers and `v*` tag restrictions. Release runners need Bash, `gh` and `sha256sum`; native runners need an isolated unlocked keyring. GitHub Actions must be allowed to create release PRs; set the repository variable `RELEASE_PRS_ENABLED=true` after that permission is available. Version automation stays disabled until then. If verification is interrupted, dispatch `release.yml` again at the same tag. Only draft assets can be replaced on a retry. The Pages workflow publishes `site/` from `main` using a self-hosted Linux runner. It generates `latest-version` from published GitHub releases; this file is ignored locally and is not a second source of version numbers. Release publication, edits, and deletion dispatch a refresh at `main`, preserving the Pages environment’s branch restriction.
+The `release` environment needs required reviewers and `v*` tag restrictions. GitHub Actions must be allowed to create release PRs; set the repository variable `RELEASE_PRS_ENABLED=true` after that permission is available. Version automation stays disabled until then. If verification is interrupted, dispatch `release.yml` again at the same tag. Only draft assets can be replaced on a retry. The Pages workflow publishes `site/` from `main` using a GitHub-hosted Ubuntu runner. It generates `latest-version` from published GitHub releases; this file is ignored locally and is not a second source of version numbers. Release publication, edits, and deletion dispatch a refresh at `main`, preserving the Pages environment’s branch restriction.
 
 ## Version policy
 

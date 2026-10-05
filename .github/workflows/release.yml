@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     if: github.ref_type == 'tag'
-    runs-on: [self-hosted, Linux]
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       beta: ${{ steps.release.outputs.beta }}
@@ -65,40 +65,33 @@ jobs:
   native:
     needs: build
     if: needs.build.outputs.beta != 'true'
-    runs-on:
-      [self-hosted, "${{ matrix.runner_os }}", "${{ matrix.runner_arch }}"]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner_os: Linux
-            runner_arch: X64
+          - runner: ubuntu-24.04
             os: linux
             arch: amd64
             ext: tar.gz
-          - runner_os: Linux
-            runner_arch: ARM64
+          - runner: ubuntu-24.04-arm
             os: linux
             arch: arm64
             ext: tar.gz
-          - runner_os: macOS
-            runner_arch: X64
+          - runner: macos-15-intel
             os: darwin
             arch: amd64
             ext: tar.gz
-          - runner_os: macOS
-            runner_arch: ARM64
+          - runner: macos-15
             os: darwin
             arch: arm64
             ext: tar.gz
-          - runner_os: Windows
-            runner_arch: X64
+          - runner: windows-2025
             os: windows
             arch: amd64
             ext: zip
-          - runner_os: Windows
-            runner_arch: ARM64
+          - runner: windows-11-arm
             os: windows
             arch: arm64
             ext: zip
@@ -115,6 +108,7 @@ jobs:
         with:
           name: release-archives
           path: release-archives
+      - uses: ./.github/actions/setup-native-keyring
       - name: Test native credentials and the release package
         shell: bash
         env:
@@ -132,7 +126,7 @@ jobs:
   draft:
     needs: [build, native]
     if: ${{ !cancelled() && needs.build.result == 'success' && (needs.native.result == 'success' || (needs.build.outputs.beta == 'true' && needs.native.result == 'skipped')) }}
-    runs-on: [self-hosted, Linux]
+    runs-on: ubuntu-24.04
     environment: release
     timeout-minutes: 10
     permissions:

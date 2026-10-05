@@ -3,23 +3,18 @@ name: Native platform checks
 on:
   workflow_dispatch:
     inputs:
-      os:
-        description: Operating system label on the runner
+      runner:
+        description: GitHub-hosted platform to verify
         required: true
         type: choice
-        options: [Linux, macOS, Windows]
-      arch:
-        description: Architecture label on the runner
-        required: true
-        type: choice
-        options: [X64, ARM64]
+        options: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
 
 permissions:
   contents: read
 
 jobs:
   native:
-    runs-on: [self-hosted, "${{ inputs.os }}", "${{ inputs.arch }}"]
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,6 +24,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - uses: ./.github/actions/setup-native-keyring
       - name: Test the CLI and credential permissions
         shell: bash
         run: bash scripts/test.sh

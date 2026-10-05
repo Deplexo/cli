@@ -1,0 +1,15 @@
+name: Set up native keyring
+description: Start an unlocked Secret Service on disposable Linux runners.
+runs:
+  using: composite
+  steps:
+    - name: Start Linux keyring
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes dbus gnome-keyring
+        export DBUS_SESSION_BUS_ADDRESS
+        DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address=1)
+        echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+        printf '\n' | gnome-keyring-daemon --unlock
