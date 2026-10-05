@@ -56,7 +56,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $work 'deplexo.exe') -Destination $stage
     if (Test-Path -LiteralPath $target) {
         if ((Get-Item -LiteralPath $target).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'The installed executable is a link. Choose another install directory.' }
-        [IO.File]::Replace($stage, $target, $null)
+        # PowerShell 5.1 converts $null to an empty string for string parameters.
+        [IO.File]::Replace($stage, $target, [NullString]::Value)
     }
     else { [IO.File]::Move($stage, $target) }
     $stage = $null

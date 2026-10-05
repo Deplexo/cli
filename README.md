@@ -8,7 +8,7 @@ The CLI is under development. Builds target Linux, macOS, and Windows on amd64 a
 
 ## Install
 
-Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The current beta is `v0.1.0-beta.4`; native testing is incomplete, so check the release notes for your platform. To install the beta on Linux or macOS:
+Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The current beta is `v0.1.0-beta.5`; native testing is incomplete, so check the release notes for your platform. To install the beta on Linux or macOS:
 
 ```sh
 curl -fsSL https://cli.deplexo.com/install.sh | sh

@@ -184,13 +184,21 @@ func TestInstallVerifiesBeforeReplacement(t *testing.T) {
 			c := New(transportFunc(func(r *http.Request) (*http.Response, error) {
 				if strings.HasSuffix(r.URL.Path, "SHA256SUMS") {
 					if scenario == "directory-moved" && !moved {
-						if err := os.Rename(dir, filepath.Join(base, "moved")); err != nil {
-							t.Fatal(err)
+						err := os.Rename(dir, filepath.Join(base, "moved"))
+						if runtime.GOOS == "windows" {
+							// Windows pins the directory against renames while os.Root is open.
+							if err == nil {
+								t.Fatal("renamed the pinned update directory")
+							}
+						} else {
+							if err != nil {
+								t.Fatal(err)
+							}
+							if err := os.Mkdir(dir, 0700); err != nil {
+								t.Fatal(err)
+							}
+							moved = true
 						}
-						if err := os.Mkdir(dir, 0700); err != nil {
-							t.Fatal(err)
-						}
-						moved = true
 					}
 					return response(200, checksum), nil
 				}

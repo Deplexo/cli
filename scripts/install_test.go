@@ -265,7 +265,17 @@ func TestShellInstallerPath(t *testing.T) {
 			if scenario == "zsh-default" {
 				answer = "\n"
 			}
-			cmd.Stdin = strings.NewReader(answer)
+			// Keep input open: BSD script forwards pipe EOF as terminal EOF before the prompt.
+			stdin, input, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = stdin.Close() }()
+			defer func() { _ = input.Close() }()
+			cmd.Stdin = stdin
+			if _, err := input.WriteString(answer); err != nil {
+				t.Fatal(err)
+			}
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("onboarding failed: %v: %s", err, out)
