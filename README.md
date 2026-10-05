@@ -4,11 +4,11 @@
 
 See the [Deplexo docs](https://docs.deplexo.com) for platform documentation.
 
-The CLI is under development. Builds target Linux, macOS, and Windows on amd64 and arm64. Each target needs passing native keyring and filesystem tests before it can be listed as supported in a release. You can build and test the code without production credentials or private repositories.
+The CLI supports Linux, macOS, and Windows on amd64 and arm64. Stable releases verify native keyring, filesystem and installer behavior on all six targets. You can build and test the code without production credentials or private repositories.
 
 ## Install
 
-Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The current beta is `v0.1.0-beta.5`. Automated native checks passed on all six targets; see the release notes for verification details. To install the beta on Linux or macOS:
+Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The latest stable release is `v0.1.0`. See the release notes for verification details. To install on Linux or macOS:
 
 ```sh
 curl -fsSL https://cli.deplexo.com/install.sh | sh
@@ -147,7 +147,7 @@ The `release` environment needs required reviewers and `v*` tag restrictions. Gi
 
 ## Version policy
 
-The first beta is `v0.1.0-beta.1`; the planned first stable release is `v0.1.0`. Release tags use `vMAJOR.MINOR.PATCH`, with prerelease suffixes such as `-beta.1` or `-rc.1`. Invalid SemVer identifiers are rejected. Public release tags exclude build metadata so package managers never have to distinguish two releases with the same precedence.
+The first stable release is `v0.1.0`. Release tags use `vMAJOR.MINOR.PATCH`, with prerelease suffixes such as `-beta.1` or `-rc.1`. Invalid SemVer identifiers are rejected. Public release tags exclude build metadata so package managers never have to distinguish two releases with the same precedence.
 
 During 0.x development, fixes increment patch; features and breaking changes increment minor. From 1.0 onward, incompatible changes increment major. The compatibility contract covers command names, flags, defaults, exit codes, JSON/JSONL fields and configuration formats. Human-readable tables are for people; scripts should use `--json`. At 1.x, removal follows a documented deprecation in an earlier minor release, except urgent security fixes with migration notes.
 

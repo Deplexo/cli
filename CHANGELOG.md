@@ -2,6 +2,17 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.0
+
+The first stable release supports Linux, macOS and Windows on amd64 and arm64.
+
+- Sign in locally through your browser with S256 PKCE, or use device authorization over SSH and on headless systems.
+- Manage apps, deployments and logs through the public API, with OS credential storage and JSON output for scripts.
+- Install or upgrade with verified release archives. Windows PowerShell 5.1 can replace existing installations.
+- Verify source, native credentials, installers and release packages on GitHub-hosted runners. All six targets require native release checks before publication.
+
+Windows ARM64 runs ordinary tests because Go does not support its race detector there.
+
 ## 0.1.0-beta.5
 
 - Sign in from a local interactive terminal through your browser with S256 PKCE and a temporary loopback callback.
