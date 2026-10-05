@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -95,6 +96,7 @@ func (a *application) logsCommand() *cobra.Command {
 		seen := make(map[int64]struct{})
 		var order []int64
 		cursor := since
+		var retryDelay time.Duration
 		for {
 			token, err := manager.Token(ctx, "logs:read")
 			if err != nil {
@@ -102,15 +104,20 @@ func (a *application) logsCommand() *cobra.Command {
 			}
 			result, err := manager.API.RuntimeLogs(ctx, token, id, cursor, limit)
 			if err != nil {
-				var remote *api.Error
-				if follow && errors.As(err, &remote) && remote.Status == 429 {
-					if err := auth.Sleep(ctx, max(3*time.Second, remote.RetryAfter)); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if retryAfter, retryable := logRetry(err); follow && retryable {
+					retryDelay = min(max(3*time.Second, retryDelay*2), time.Minute)
+					delay := max(retryAfter, retryDelay) + time.Duration(rand.Int64N(int64(retryDelay/4)))
+					if err := auth.Sleep(ctx, delay); err != nil {
 						return err
 					}
 					continue
 				}
 				return err
 			}
+			retryDelay = 0
 			if !follow && a.json {
 				return output.JSON(a.options.Out, result)
 			}
@@ -153,4 +160,14 @@ func (a *application) logsCommand() *cobra.Command {
 	command.Flags().IntVar(&limit, "limit", 500, "Maximum lines per request (1 to 1000)")
 	command.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Maximum time to follow logs")
 	return command
+}
+
+// Only reads are retried; malformed responses and authorization failures stop following.
+func logRetry(err error) (time.Duration, bool) {
+	var remote *api.Error
+	if errors.As(err, &remote) {
+		return remote.RetryAfter, remote.Status == 429 || remote.Status == 408 || remote.Status == 500 || remote.Status == 502 || remote.Status == 503 || remote.Status == 504
+	}
+	var transport *api.TransportError
+	return 0, errors.As(err, &transport)
 }
