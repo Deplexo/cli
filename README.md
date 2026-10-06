@@ -98,6 +98,8 @@ Commands use the app UUID from `--app`, or from `.deplexo.json` in the current d
 
 `apps create` creates a new app and its first deployment, then prints both UUIDs. If the response leaves the outcome unclear, the CLI stops without retrying. Check the dashboard before trying again. Stopping an app, cancelling a deployment, and deleting an app require `--yes`; stopping the app does not mean cancelling its current deployment.
 
+Commit a version 1 `deplexo.yaml` at the repository root to configure the app type, build, startup command, or web port. The server reads it during `apps create` and `deploy`; the CLI does not read a local YAML file. Explicit YAML fields override matching command-line settings. Omitted fields use the supplied or saved defaults. `type: worker` creates a background app without a public port or URL; an existing app cannot change type through YAML. See the [YAML reference](https://docs.deplexo.com/reference/configuration/) for fields, supported Git providers, and migration from the old format.
+
 `logs --follow` requests new runtime logs using the server's resume cursor and filters repeated lines by their recent event IDs. It passes the cursor back unchanged and stops after `--timeout`, which defaults to 30 minutes. Build log commands return a snapshot for the deployment UUID you request.
 
 ## Get support
