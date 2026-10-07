@@ -88,6 +88,29 @@ func TestBoundedDecodeAndRedaction(t *testing.T) {
 	}
 }
 
+func TestOnlyKnownCustomerMessagesSurvive(t *testing.T) {
+	for _, tc := range []struct{ name, body, want string }{
+		{"deploys paused", `{"error":{"code":"deploys_paused","message":"Maintenance until 14:00 UTC"}}`, "Deploys are paused: Maintenance until 14:00 UTC"},
+		{"deploys paused without message", `{"error":{"code":"deploys_paused"}}`, "Deploys are paused; try again later"},
+		{"other conflict", `{"error":{"code":"conflict","message":"test-secret"}}`, "API request failed (HTTP 409)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = io.WriteString(w, tc.body)
+			})
+			_, err := client.Profile(context.Background(), "token")
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+	long := (&Error{Code: "deploys_paused", Message: publicMessage("deploys_paused", strings.Repeat("é", 600))}).Error()
+	if got := len([]rune(long)); got != len([]rune("Deploys are paused: "))+500 {
+		t.Fatalf("message not bounded: %d runes", got)
+	}
+}
+
 func TestDiscoveryAndPairingValidation(t *testing.T) {
 	for _, target := range []string{"https://evil.example/oauth/token", "http://example.com/oauth/token", "https://user@example.com/oauth/token", "https://example.com/oauth/token?secret=x"} {
 		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {

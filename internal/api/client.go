@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const DefaultOrigin = "https://deplexo.com"
@@ -65,9 +66,32 @@ type Error struct {
 	Status     int
 	Code       string
 	RetryAfter time.Duration
+	// Message is kept only for codes whose server text is written for customers.
+	Message string
+}
+
+const codeDeploysPaused = "deploys_paused"
+
+// publicMessage keeps a server message only for codes known to carry
+// customer-facing text, bounded so a response cannot flood the terminal.
+func publicMessage(code, message string) string {
+	if code != codeDeploysPaused || !utf8.ValidString(message) {
+		return ""
+	}
+	message = strings.TrimSpace(message)
+	if runes := []rune(message); len(runes) > 500 {
+		message = string(runes[:500])
+	}
+	return message
 }
 
 func (e *Error) Error() string {
+	if e.Code == codeDeploysPaused {
+		if e.Message == "" {
+			return "Deploys are paused; try again later"
+		}
+		return "Deploys are paused: " + e.Message
+	}
 	switch e.Status {
 	case 401:
 		return "sign-in required; run `deplexo auth login` or check DEPLEXO_TOKEN"
@@ -145,18 +169,20 @@ func (c *Client) request(ctx context.Context, method, endpoint, token, contentTy
 		var payload struct {
 			Error json.RawMessage `json:"error"`
 		}
-		var code string
+		var code, message string
 		if json.Unmarshal(data, &payload) == nil {
 			if json.Unmarshal(payload.Error, &code) != nil {
 				var nested struct {
-					Code string `json:"code"`
+					Code    string `json:"code"`
+					Message string `json:"message"`
 				}
 				_ = json.Unmarshal(payload.Error, &nested)
-				code = nested.Code
+				code, message = nested.Code, nested.Message
 			}
 		}
-		// Server codes guide protocol handling. Keep response bodies out of errors because they may contain secrets.
-		return &Error{Status: resp.StatusCode, Code: code, RetryAfter: retryAfter(resp.Header.Get("Retry-After"))}
+		// Server codes guide protocol handling. Keep response bodies out of errors because they may contain
+		// secrets; only messages of known customer-facing codes survive.
+		return &Error{Status: resp.StatusCode, Code: code, Message: publicMessage(code, message), RetryAfter: retryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if out == nil {
 		return nil
