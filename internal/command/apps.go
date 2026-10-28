@@ -147,10 +147,11 @@ func (a *application) listAppsCommand() *cobra.Command {
 
 func (a *application) deployCommand() *cobra.Command {
 	var appFlag string
+	var rebuild bool
 	command := &cobra.Command{
-		Use: "deploy", Short: "Rebuild and deploy an existing app from its recorded source",
-		Long:    "Rebuild and deploy an existing app from its recorded source. Git apps use the latest source.\nThis starts a build, not a process-only restart. Local directories and ZIP files are not accepted.\nThe command returns when the deployment is queued; it does not wait for the build to finish.",
-		Example: "  deplexo deploy --app 11111111-1111-4111-8111-111111111111\n  deplexo deploy  # Use the app linked to this directory",
+		Use: "deploy", Short: "Deploy an existing app from its recorded source",
+		Long:    "Deploy an existing app from its recorded source. Git apps use the latest source.\nIf the source and build settings haven't changed since an earlier build, its stored image is deployed again without building. Use --rebuild to build a fresh image, for example to pick up newer base images.\nThis is not a process-only restart. Local directories and ZIP files are not accepted.\nThe command returns when the deployment is queued; it does not wait for it to finish.",
+		Example: "  deplexo deploy --app 11111111-1111-4111-8111-111111111111\n  deplexo deploy  # Use the app linked to this directory\n  deplexo deploy --rebuild",
 		Args:    noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			id, err := a.selectedApp(appFlag)
@@ -165,7 +166,7 @@ func (a *application) deployCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := manager.API.Deploy(cmd.Context(), token, id)
+			result, err := manager.API.Deploy(cmd.Context(), token, id, rebuild)
 			if err != nil {
 				return err
 			}
@@ -176,6 +177,7 @@ func (a *application) deployCommand() *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&appFlag, "app", "", "App UUID; defaults to .deplexo.json")
+	command.Flags().BoolVar(&rebuild, "rebuild", false, "Build a fresh image even if nothing changed")
 	return command
 }
 

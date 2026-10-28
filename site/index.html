@@ -292,9 +292,11 @@
               <dl>
                 <dt><code>deplexo deploy</code></dt>
                 <dd>
-                  Rebuild the selected app from its recorded source. The command
+                  Redeploy the selected app from its recorded source, reusing
+                  the stored image when nothing changed. Add
+                  <code>--rebuild</code> to build a fresh image. The command
                   returns the queued deployment's UUID without waiting for the
-                  build.
+                  deployment to finish.
                 </dd>
                 <dt><code>deplexo deployments list</code></dt>
                 <dd>Show the selected app's deployment history.</dd>

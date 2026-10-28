@@ -1,6 +1,6 @@
 # Deplexo CLI
 
-`deplexo` lets you sign in to Deplexo, list apps, create apps from Git repositories, rebuild existing apps, and read deployment history and logs. You can link a local directory to an app so you do not need to pass its UUID each time. The CLI is written in Go and uses the public API.
+`deplexo` lets you sign in to Deplexo, list apps, create apps from Git repositories, redeploy existing apps, and read deployment history and logs. You can link a local directory to an app so you do not need to pass its UUID each time. The CLI is written in Go and uses the public API.
 
 See the [Deplexo docs](https://docs.deplexo.com) for platform documentation.
 
@@ -94,7 +94,7 @@ Commands use the app UUID from `--app`, or from `.deplexo.json` in the current d
 
 `apps list` shows the apps available to your account, with their names, statuses, and UUIDs. `--json` returns an `apps` array without account or plan information.
 
-`deploy` rebuilds an existing app from its recorded source; Git apps use the latest source. It returns the new deployment UUID and status after the server accepts the request. It does not wait for the build to finish. Use `deployments logs <deployment-uuid>` to inspect the build. The public API calls this operation `restart` and requires `app:restart`. Sign in again if your saved session lacks that scope. A process-only restart and local directory/ZIP uploads are not available as CLI commands.
+`deploy` redeploys an existing app from its recorded source; Git apps use the latest source. If the source and build settings haven't changed since an earlier build, the server deploys that stored image again without building. Add `--rebuild` to build a fresh image, for example to pick up newer base images. It returns the new deployment UUID and status after the server accepts the request. It does not wait for the deployment to finish. Use `deployments logs <deployment-uuid>` to inspect the build. The public API calls this operation `restart` and requires `app:restart`. Sign in again if your saved session lacks that scope. A process-only restart and local directory/ZIP uploads are not available as CLI commands.
 
 `apps create` creates a new app and its first deployment, then prints both UUIDs. If the response leaves the outcome unclear, the CLI stops without retrying. Check the dashboard before trying again. Stopping an app, cancelling a deployment, and deleting an app require `--yes`; stopping the app does not mean cancelling its current deployment.
 
@@ -129,7 +129,7 @@ Results go to stdout; pairing instructions and errors go to stderr. `--json` wri
 
 ## API gaps
 
-A process-only restart, deployment status polling without logs, and build log streaming still need public API contracts. Local directory and ZIP deployment also remain unimplemented until the upload and existing-app deployment contracts are published together. These features are not registered as commands. `apps list` reads the public `/me` inventory, `apps create --repo` uses the creation endpoint, and `deploy` uses the documented rebuild endpoint at `/apps/{id}/restart`. The CLI uses neither browser cookies nor private RPCs.
+A process-only restart, deployment status polling without logs, and build log streaming still need public API contracts. Local directory and ZIP deployment also remain unimplemented until the upload and existing-app deployment contracts are published together. These features are not registered as commands. `apps list` reads the public `/me` inventory, `apps create --repo` uses the creation endpoint, and `deploy` uses the documented redeploy endpoint at `/apps/{id}/restart`. The CLI uses neither browser cookies nor private RPCs.
 
 ## Verification and workflows
 

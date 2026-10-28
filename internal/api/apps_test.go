@@ -51,6 +51,7 @@ func TestDeployPublicContractAndAmbiguousResults(t *testing.T) {
 		ambiguous  bool
 	}{
 		{"accepted", `{"appId":"` + id + `","deploymentId":"22222222-2222-4222-8222-222222222222","jobId":42,"status":"queued"}`, 202, false},
+		{"rebuild", `{"appId":"` + id + `","deploymentId":"22222222-2222-4222-8222-222222222222","jobId":42,"status":"queued"}`, 202, false},
 		{"missing-identity", `{"appId":"` + id + `","status":"queued"}`, 202, true},
 		{"wrong-app", `{"appId":"33333333-3333-4333-8333-333333333333","deploymentId":"22222222-2222-4222-8222-222222222222","status":"queued"}`, 202, true},
 		{"invalid-response", `{`, 202, true},
@@ -63,18 +64,22 @@ func TestDeployPublicContractAndAmbiguousResults(t *testing.T) {
 			client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				body, _ := io.ReadAll(r.Body)
-				if r.Method != "POST" || r.URL.Path != "/user/api/v1/apps/"+id+"/restart" || string(body) != "{}" || r.Header.Get("Content-Type") != "application/json" {
+				want := "{}"
+				if tc.name == "rebuild" {
+					want = `{"rebuild":true}`
+				}
+				if r.Method != "POST" || r.URL.Path != "/user/api/v1/apps/"+id+"/restart" || string(body) != want || r.Header.Get("Content-Type") != "application/json" {
 					t.Errorf("wrong deployment contract: %s %s %s", r.Method, r.URL, body)
 				}
 				w.WriteHeader(tc.status)
 				_, _ = io.WriteString(w, tc.body)
 			})
-			result, err := client.Deploy(context.Background(), "test-access", id)
+			result, err := client.Deploy(context.Background(), "test-access", id, tc.name == "rebuild")
 			var mutation *MutationError
 			if calls != 1 || errors.As(err, &mutation) != tc.ambiguous {
 				t.Fatalf("calls=%d err=%v", calls, err)
 			}
-			if tc.name == "accepted" {
+			if tc.name == "accepted" || tc.name == "rebuild" {
 				if err != nil || result.DeploymentID == "" || result.AppID != id {
 					t.Fatalf("accepted result: %+v %v", result, err)
 				}

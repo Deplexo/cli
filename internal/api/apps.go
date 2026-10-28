@@ -69,14 +69,16 @@ type Redeployment struct {
 	Status       string `json:"status"`
 }
 
-func (c *Client) Deploy(ctx context.Context, token, id string) (Redeployment, error) {
+func (c *Client) Deploy(ctx context.Context, token, id string, rebuild bool) (Redeployment, error) {
 	var result Redeployment
 	if !ValidID(id) {
 		return result, errors.New("app ID must be a UUID")
 	}
-	// The public restart endpoint rebuilds the recorded source; it is not a
+	// The public restart endpoint deploys the recorded source; it is not a
 	// process-only restart. Keep that distinction in the CLI command and help.
-	err := c.post(ctx, "/apps/"+id+"/restart", token, struct{}{}, &result)
+	err := c.post(ctx, "/apps/"+id+"/restart", token, struct {
+		Rebuild bool `json:"rebuild,omitempty"`
+	}{rebuild}, &result)
 	if err == nil && (result.AppID != id || !ValidID(result.DeploymentID) || result.Status == "") {
 		err = errors.New("API returned an incomplete deployment result")
 	}
