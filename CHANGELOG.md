@@ -2,6 +2,15 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.2.0
+
+- `deploy` now deploys the stored image again when the source and build settings haven't changed since an earlier build. Add `--rebuild` to build a fresh image, for example to pick up newer base images.
+- `deplexo support` lists email support, the Discord community and the documentation. It works offline and without signing in.
+- Sign-in requests start and stop permission by default, and interactive login shows where to go next.
+- When deploys are paused, commands print the reason the platform gives.
+- Following logs backs off and retries after brief network or server errors instead of stopping.
+- Builds use Go 1.26.10, which fixes several security issues in Go's standard library.
+
 ## 0.1.0
 
 The first stable release supports Linux, macOS and Windows on amd64 and arm64.

@@ -8,7 +8,7 @@ The CLI supports Linux, macOS, and Windows on amd64 and arm64. Stable releases v
 
 ## Install
 
-Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The latest stable release is `v0.1.0`. See the release notes for verification details. To install on Linux or macOS:
+Visit [the CLI site](https://cli.deplexo.com/) for installation commands and examples. The latest stable release is `v0.2.0`. See the release notes for verification details. To install on Linux or macOS:
 
 ```sh
 curl -fsSL https://cli.deplexo.com/install.sh | sh
